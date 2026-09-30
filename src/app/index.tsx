@@ -1,11 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, Animated, Easing, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, Animated, Easing, Platform, useWindowDimensions, Alert, NativeModules } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { WebView } from 'react-native-webview';
 import Slider from '@react-native-community/slider';
+let ExternalDisplay: any = ({ children }: any) => <>{children}</>;
+let useExternalDisplay: any = () => ({});
+try {
+  if (NativeModules.RNExternalDisplay) {
+    const ext = require('react-native-external-display');
+    ExternalDisplay = ext.default;
+    useExternalDisplay = ext.useExternalDisplay;
+  }
+} catch (e) {
+  // Ignored
+}
 import fullBible from '../bible.json';
 
 type ModuleType = 'Bible' | 'Songs' | 'Media' | 'Documents' | 'Messages' | 'Timer' | 'Web' | 'Settings';
@@ -80,6 +92,9 @@ const mockSongs = [
 
 
 export default function VisualDTBApp() {
+  const { width } = useWindowDimensions();
+  const isCompact = width < 768;
+
   const [activeModule, setActiveModule] = useState<ModuleType>('Bible');
   const [projection, setProjection] = useState<ProjectionData>({ type: 'text', content: 'VISUAL DTB\nListo para proyectar' });
   
@@ -113,6 +128,8 @@ export default function VisualDTBApp() {
   const [newSongLyrics, setNewSongLyrics] = useState('');
 
   // Bible State
+  const [loadedBibles, setLoadedBibles] = useState<any[]>([{ id: 'rv1960', name: 'RV1960', data: fullBible }]);
+  const [activeBibleId, setActiveBibleId] = useState<string>('rv1960');
   const [selectedBook, setSelectedBook] = useState<string>('Mateo');
   const [selectedChapter, setSelectedChapter] = useState<number>(8);
   const [bibleSearch, setBibleSearch] = useState<string>('');
@@ -121,11 +138,16 @@ export default function VisualDTBApp() {
   const [backgroundMedia, setBackgroundMedia] = useState<{type: 'image' | 'video', uri: string} | null>(null);
   const [mediaPreviewUri, setMediaPreviewUri] = useState<string | null>(null);
   const [mediaPreviewType, setMediaPreviewType] = useState<'image'|'video'|null>(null);
-  const [customBackgrounds, setCustomBackgrounds] = useState<any[]>([]);
+  const [customBackgrounds, setCustomBackgrounds] = useState<any[]>(defaultBackgrounds);
 
   // Toolbar Slider states
   const [brightness, setBrightness] = useState<number>(100);
   const [textSize, setTextSize] = useState<number>(48);
+
+  // External Display State
+  const externalScreens = useExternalDisplay();
+  const hasExternalDisplay = Object.keys(externalScreens).length > 0;
+  const [externalDisplayEnabled, setExternalDisplayEnabled] = useState<boolean>(true);
 
   // Playlist Navigation
   const [playlist, setPlaylist] = useState<{ items: string[], currentIndex: number } | null>(null);
@@ -275,14 +297,65 @@ export default function VisualDTBApp() {
   const renderModuleContent = () => {
     switch(activeModule) {
       case 'Bible':
-        const filteredBooks = fullBible.filter((b: any) => b.name.toLowerCase().includes(bibleSearch.toLowerCase()));
-        const activeBookData = fullBible.find((b: any) => b.name === selectedBook) || fullBible[0];
+        const activeBibleObj = loadedBibles.find(b => b.id === activeBibleId) || loadedBibles[0];
+        const currentBibleData = activeBibleObj.data;
+        const filteredBooks = currentBibleData.filter((b: any) => b.name.toLowerCase().includes(bibleSearch.toLowerCase()));
+        const activeBookData = currentBibleData.find((b: any) => b.name === selectedBook) || currentBibleData[0];
         const activeChapterData = activeBookData.chapters[selectedChapter - 1] || activeBookData.chapters[0];
+
+        const handleLoadBible = async () => {
+           try {
+             let result = await DocumentPicker.getDocumentAsync({
+               type: '*/*',
+               copyToCacheDirectory: true
+             });
+             if (!result.canceled && result.assets && result.assets[0].uri) {
+                const fileUri = result.assets[0].uri;
+                if (!result.assets[0].name.toLowerCase().endsWith('.json')) {
+                   Alert.alert('Error', 'El archivo debe ser un JSON.');
+                   return;
+                }
+                const fileStr = await FileSystem.readAsStringAsync(fileUri);
+                const parsedBible = JSON.parse(fileStr);
+                if (Array.isArray(parsedBible) && parsedBible[0] && parsedBible[0].name && Array.isArray(parsedBible[0].chapters)) {
+                   const newId = 'bible-' + Date.now();
+                   let newName = result.assets[0].name.replace('.json', '');
+                   if (newName.length > 12) newName = newName.substring(0, 12) + '...';
+                   setLoadedBibles([...loadedBibles, { id: newId, name: newName, data: parsedBible }]);
+                   setActiveBibleId(newId);
+                   setSelectedBook(parsedBible[0].name);
+                   setSelectedChapter(1);
+                   Alert.alert('Éxito', 'Biblia cargada correctamente.');
+                } else {
+                   Alert.alert('Error', 'El formato del archivo JSON no es compatible.');
+                }
+             }
+           } catch(e) {
+             Alert.alert('Error', 'No se pudo leer el archivo: ' + e);
+           }
+        };
 
         return (
           <View style={styles.twoColumnLayout}>
              {/* Columna Izquierda: Buscador y Libros */}
              <View style={styles.columnLeft}>
+                <View style={{flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderBottomColor: '#1e293b'}}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {loadedBibles.map(b => (
+                      <TouchableOpacity 
+                        key={b.id} 
+                        style={{padding: 8, paddingHorizontal: 12, marginRight: 8, backgroundColor: activeBibleId === b.id ? '#3b82f6' : '#1e293b', borderRadius: 6}}
+                        onPress={() => { setActiveBibleId(b.id); setSelectedBook(b.data[0].name); setSelectedChapter(1); }}
+                      >
+                        <Text style={{color: 'white', fontWeight: 'bold'}}>{b.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity style={{padding: 8, paddingHorizontal: 12, backgroundColor: '#10b981', borderRadius: 6}} onPress={handleLoadBible}>
+                      <Text style={{color: 'white', fontWeight: 'bold'}}>+ Añadir JSON</Text>
+                    </TouchableOpacity>
+                  </ScrollView>
+                </View>
+
                 <View style={styles.searchBar}>
                   <Ionicons name="search" size={16} color="#94a3b8" />
                   <TextInput 
@@ -299,26 +372,30 @@ export default function VisualDTBApp() {
                        <TouchableOpacity style={styles.bookHeader} onPress={() => { setSelectedBook(b.name); setSelectedChapter(1); }}>
                          <Text style={styles.bookHeaderText}>{b.name}</Text>
                        </TouchableOpacity>
-                       {selectedBook === b.name && b.chapters.map((c: any, index: number) => {
-                         const chapterNum = index + 1;
-                         return (
-                         <TouchableOpacity 
-                           key={`${b.name}-${chapterNum}`} 
-                           style={[styles.chapterItem, selectedChapter === chapterNum && styles.chapterItemActive]}
-                           onPress={() => setSelectedChapter(chapterNum)}
-                         >
-                           <Text style={[styles.chapterItemText, selectedChapter === chapterNum && {color: '#60a5fa'}]}>Capítulo {chapterNum}</Text>
-                         </TouchableOpacity>
-                         )
-                       })}
+                       {selectedBook === b.name && (
+                         <View style={{flexDirection: 'row', flexWrap: 'wrap', padding: 8, backgroundColor: '#0f172a'}}>
+                           {b.chapters.map((c: any, index: number) => {
+                             const chapterNum = index + 1;
+                             return (
+                               <TouchableOpacity 
+                                 key={`${b.name}-${chapterNum}`} 
+                                 style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center', margin: 4, borderRadius: 20, backgroundColor: selectedChapter === chapterNum ? '#3b82f6' : '#1e293b' }}
+                                 onPress={() => setSelectedChapter(chapterNum)}
+                               >
+                                 <Text style={{ color: selectedChapter === chapterNum ? '#ffffff' : '#94a3b8', fontWeight: 'bold' }}>{chapterNum}</Text>
+                               </TouchableOpacity>
+                             )
+                           })}
+                         </View>
+                       )}
                      </View>
                    ))}
                 </ScrollView>
              </View>
 
              {/* Columna Derecha: Versículos */}
-             <View style={styles.columnRight}>
-               <Text style={styles.mockTitle}>{selectedBook} {selectedChapter} (RV1960)</Text>
+             <View style={[styles.columnRight, isCompact && { padding: 5 }]}>
+               <Text style={[styles.mockTitle, isCompact && { fontSize: 16 }]}>{selectedBook} {selectedChapter} (RV1960)</Text>
                <ScrollView style={{flex: 1}}>
                  {activeChapterData.map((verseText: string, index: number) => {
                    const verseNum = index + 1;
@@ -359,19 +436,19 @@ export default function VisualDTBApp() {
                     value={songSearch}
                     onChangeText={setSongSearch}
                   />
+                  <TouchableOpacity 
+                     style={{backgroundColor: '#10b981', padding: 6, borderRadius: 6, marginLeft: 8, paddingHorizontal: 12}}
+                     onPress={() => setIsAddingSong(true)}
+                  >
+                     <Text style={{color: 'white', fontWeight: 'bold'}}>+ Nueva</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity 
-                   style={[styles.projectButton, {backgroundColor: '#3b82f6', marginBottom: 10, marginHorizontal: 16, paddingVertical: 8}]}
-                   onPress={() => setIsAddingSong(true)}
-                >
-                   <Text style={[styles.projectButtonText, {fontSize: 14}]}>+ Agregar Canción</Text>
-                </TouchableOpacity>
                 <ScrollView style={{flex: 1}}>
                    {filteredSongs.map(s => (
                      <ScrollView key={s.id} horizontal showsHorizontalScrollIndicator={false} snapToInterval={350} decelerationRate="fast">
                        <View style={{flexDirection: 'row'}}>
                          <TouchableOpacity 
-                           style={[styles.songListItem, {width: 250}, selectedSongId === s.id && styles.songListItemActive]}
+                           style={[styles.songListItem, {width: isCompact ? 140 : 250}, selectedSongId === s.id && styles.songListItemActive]}
                            onPress={() => { setSelectedSongId(s.id); setIsAddingSong(false); }}
                          >
                            <Ionicons name="musical-note" size={16} color={selectedSongId === s.id ? "#3b82f6" : "#94a3b8"} style={{marginRight: 8}}/>
@@ -395,10 +472,10 @@ export default function VisualDTBApp() {
              </View>
 
              {/* Columna Derecha: Estrofas o Formulario */}
-             <View style={styles.columnRight}>
+             <View style={[styles.columnRight, isCompact && { padding: 5 }]}>
                {isAddingSong ? (
-                 <View style={{flex: 1, padding: 16}}>
-                    <Text style={styles.mockTitle}>Crear Nueva Canción</Text>
+                 <ScrollView style={{flex: 1, padding: 16}} contentContainerStyle={{paddingBottom: 40}}>
+                     <Text style={styles.mockTitle}>Crear Nueva Canción</Text>
                     <Text style={{color: '#94a3b8', marginBottom: 10}}>Pega la letra completa. Un doble salto de línea (espacio vacío) creará una estrofa separada automáticamente.</Text>
                     
                     <TextInput 
@@ -410,7 +487,7 @@ export default function VisualDTBApp() {
                     />
                     
                     <TextInput 
-                      style={[styles.searchInput, {flex: 1, backgroundColor: '#1e293b', padding: 12, marginBottom: 10, color: 'white', textAlignVertical: 'top'}]}
+                      style={[styles.searchInput, {backgroundColor: '#1e293b', padding: 12, marginBottom: 20, color: 'white', textAlignVertical: 'top', minHeight: 250}]}
                       placeholder="Letra de la canción...\n\n(Doble 'Enter' para separar estrofas)"
                       placeholderTextColor="#64748b"
                       value={newSongLyrics}
@@ -425,9 +502,9 @@ export default function VisualDTBApp() {
                       <TouchableOpacity style={[styles.projectButton, {backgroundColor: '#ef4444'}]} onPress={() => setIsAddingSong(false)}>
                          <Text style={styles.projectButtonText}>Cancelar</Text>
                       </TouchableOpacity>
-                    </View>
-                 </View>
-               ) : (
+                                         </View>
+                  </ScrollView>
+                ) : (
                  <>
                    <Text style={styles.mockTitle}>{activeSong.title}</Text>
                    <ScrollView style={{flex: 1}}>
@@ -457,14 +534,20 @@ export default function VisualDTBApp() {
       case 'Media':
         return (
           <ScrollView style={styles.moduleContentSingle}>
-            <Text style={styles.mockTitle}>Galería Multimedia y Fondos</Text>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingRight: 10}}>
+               <Text style={[styles.mockTitle, {marginBottom: 0}]}>Galería Multimedia y Fondos</Text>
+               <TouchableOpacity style={{backgroundColor: '#ef4444', padding: 8, borderRadius: 6, flexDirection: 'row', alignItems: 'center'}} onPress={() => setBackgroundMedia(null)}>
+                 <Ionicons name="trash-outline" size={16} color="white" style={{marginRight: 4}}/>
+                 <Text style={{color: 'white', fontWeight: 'bold'}}>Fondo a Negro</Text>
+               </TouchableOpacity>
+            </View>
             <View style={styles.gridContainer}>
                  <TouchableOpacity style={[styles.gridBox, {width: 140, height: 140, backgroundColor: '#3b82f620', borderColor: '#3b82f6', borderWidth: 2, borderStyle: 'dashed'}]} onPress={pickMedia}>
                    <Ionicons name="cloud-upload" size={32} color="#3b82f6" />
                    <Text style={{color: '#3b82f6', marginTop: 10, fontWeight: 'bold', textAlign: 'center', paddingHorizontal: 10}}>Archivo Local del iPad</Text>
                  </TouchableOpacity>
 
-                 {[...defaultBackgrounds, ...customBackgrounds].map(bg => (
+                 {customBackgrounds.map(bg => (
                     <TouchableOpacity 
                       key={bg.id} 
                       style={[styles.gridBox, {width: 140, height: 140, overflow: 'hidden', borderWidth: 1, borderColor: '#334155'}]} 
@@ -476,6 +559,20 @@ export default function VisualDTBApp() {
                       <View style={{position: 'absolute', bottom: 5, left: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.7)', padding: 4, borderRadius: 4}}>
                          <Text style={{color: 'white', fontSize: 10, textAlign: 'center', fontWeight: 'bold'}}>{bg.name}</Text>
                       </View>
+                      <TouchableOpacity 
+                        style={{position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 15, zIndex: 10}}
+                        onPress={(e) => {
+                           e.stopPropagation();
+                           Alert.alert('Eliminar', '¿Deseas quitar este fondo?', [
+                             { text: 'Cancelar', style: 'cancel' },
+                             { text: 'Eliminar', style: 'destructive', onPress: () => {
+                                setCustomBackgrounds(prev => prev.filter(item => item.id !== bg.id));
+                             }}
+                           ]);
+                        }}
+                      >
+                         <Ionicons name="ellipsis-vertical" size={14} color="white" />
+                      </TouchableOpacity>
                     </TouchableOpacity>
                  ))}
             </View>
@@ -501,7 +598,7 @@ export default function VisualDTBApp() {
                      </TouchableOpacity>
                      <TouchableOpacity style={[styles.projectButton, {flex: 1, backgroundColor: '#8b5cf6'}]} onPress={() => {
                         if (mediaPreviewUri) {
-                          const alreadyExists = [...defaultBackgrounds, ...customBackgrounds].some(bg => bg.uri === mediaPreviewUri);
+                          const alreadyExists = customBackgrounds.some(bg => bg.uri === mediaPreviewUri);
                           if (!alreadyExists) {
                              const newBg = { id: 'custom-'+Date.now(), type: mediaPreviewType, thumbnail: mediaPreviewUri, uri: mediaPreviewUri, name: 'Guardado' };
                              setCustomBackgrounds([...customBackgrounds, newBg]);
@@ -536,7 +633,7 @@ export default function VisualDTBApp() {
 
       case 'Messages':
         return (
-          <View style={styles.moduleContentSingle}>
+          <ScrollView style={styles.moduleContentSingle}>
             <Text style={styles.mockTitle}>Anuncios Tipo Cintillo (Marquee)</Text>
             <TextInput 
               style={styles.textInput}
@@ -564,12 +661,12 @@ export default function VisualDTBApp() {
                 <Text style={styles.projectButtonText}>Detener Cintillo</Text>
               </TouchableOpacity>
             )}
-          </View>
+          </ScrollView>
         );
 
       case 'Timer':
         return (
-          <View style={styles.moduleContentSingle}>
+          <ScrollView style={styles.moduleContentSingle}>
             <Text style={styles.mockTitle}>Cuenta Regresiva</Text>
             <View style={styles.timerMock}>
                <Text style={styles.timerTextMock}>{formatTime(timeLeft)}</Text>
@@ -585,12 +682,12 @@ export default function VisualDTBApp() {
                  <Text style={styles.projectButtonText}>Reset</Text>
                </TouchableOpacity>
             </View>
-          </View>
+          </ScrollView>
         );
 
       case 'Web':
         return (
-          <View style={styles.moduleContentSingle}>
+          <ScrollView style={styles.moduleContentSingle}>
              <Text style={styles.mockTitle}>Navegador Integrado</Text>
              <View style={styles.urlBar}>
                 <Ionicons name="lock-closed" size={14} color="#10b981" style={{marginRight: 6}}/>
@@ -606,18 +703,26 @@ export default function VisualDTBApp() {
              <TouchableOpacity style={[styles.gridBox, {width: '100%', height: 100, backgroundColor: '#10b981'}]} onPress={() => setProjection({ type: 'web', content: webUrl })}>
                 <Text style={{color: '#ffffff', fontWeight: 'bold', fontSize: 18}}>Proyectar y Visualizar Web</Text>
              </TouchableOpacity>
-          </View>
+          </ScrollView>
         );
 
       case 'Settings':
         return (
-          <View style={styles.moduleContentSingle}>
+          <ScrollView style={styles.moduleContentSingle}>
              <Text style={styles.mockTitle}>Configuración del Sistema</Text>
              <View style={styles.settingRow}>
-                <Text style={styles.verseText}>Auto-conectar a TV Externa HDMI</Text>
-                <Ionicons name="toggle" size={32} color="#3b82f6" />
+                <Text style={styles.verseText}>Proyectar a TV Externa (Airplay/HDMI)</Text>
+                <TouchableOpacity onPress={() => setExternalDisplayEnabled(!externalDisplayEnabled)}>
+                  <Ionicons name={externalDisplayEnabled ? "toggle" : "toggle-outline"} size={32} color={externalDisplayEnabled ? "#3b82f6" : "#64748b"} />
+                </TouchableOpacity>
              </View>
-          </View>
+             {hasExternalDisplay ? (
+                <Text style={{color: '#10b981', marginTop: 10, padding: 10, backgroundColor: '#064e3b', borderRadius: 6}}>✅ Pantalla externa detectada.</Text>
+             ) : (
+                <Text style={{color: '#f59e0b', marginTop: 10, padding: 10, backgroundColor: '#78350f', borderRadius: 6}}>⚠️ No se detecta pantalla externa. Conecta por HDMI o AirPlay.</Text>
+             )}
+             <Text style={{color: '#94a3b8', marginTop: 10, fontSize: 12}}>Nota: Requiere App Nativa (EAS Build). En Expo Go, esta función no está soportada.</Text>
+          </ScrollView>
         );
     }
   };
@@ -663,25 +768,82 @@ export default function VisualDTBApp() {
     }
     if (projection.type === 'web' || projection.type === 'pdf' || projection.type === 'document') {
        // Allow webview to render PDFs and Office documents natively on iOS and Web URLs.
-       return <WebView source={{ uri: projection.content }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} allowFileAccessFromFileURLs={true} allowUniversalAccessFromFileURLs={true} />;
+       return <WebView source={{ uri: projection.content }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} allowFileAccessFromFileURLs={true} allowUniversalAccessFromFileURLs={true} allowFileAccess={true} />
     }
     return null;
   };
 
+  const renderProjectionScreen = () => {
+     return (
+        <View style={{flex: 1, backgroundColor: 'black'}}>
+           {isBlackout ? (
+              <View style={{flex: 1, backgroundColor: 'black'}} />
+           ) : (
+              <>
+                {/* Background Media */}
+                {backgroundMedia && backgroundMedia.type === 'image' && (
+                  <Image source={{ uri: backgroundMedia.uri }} style={[StyleSheet.absoluteFill, {width: '100%', height: '100%', resizeMode: 'cover', zIndex: -1}]} />
+                )}
+                {backgroundMedia && backgroundMedia.type === 'video' && (() => {
+                  const uri = backgroundMedia.uri;
+                  const baseUrl = uri.substring(0, uri.lastIndexOf('/') + 1);
+                  const fileName = uri.substring(uri.lastIndexOf('/') + 1);
+                  return (
+                    <View style={[StyleSheet.absoluteFill, {zIndex: -1}]}>
+                      <WebView 
+                        originWhitelist={['*']} 
+                        scrollEnabled={false}
+                        allowsInlineMediaPlayback={true}
+                        mediaPlaybackRequiresUserAction={false}
+                        allowFileAccessFromFileURLs={true}
+                        allowUniversalAccessFromFileURLs={true}
+                        source={{ html: `
+                           <style>body { margin: 0; background: black; overflow: hidden; }</style>
+                           <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;">
+                             <source src="${fileName}" type="video/mp4">
+                           </video>
+                        `, baseUrl: baseUrl }} 
+                        style={{flex: 1, backgroundColor: 'black'}} 
+                      />
+                    </View>
+                  );
+                })()}
+
+                {/* Brightness Overlay (Simulated Dimming) */}
+                {brightness < 100 && (
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black', opacity: 1 - (brightness / 100), pointerEvents: 'none', zIndex: 40 }]} />
+                )}
+                
+                {renderPreviewContent()}
+                
+                {activeMarquee !== '' && (
+                  <View style={styles.marqueeContainer}>
+                    <Animated.View style={{ transform: [{ translateX: scrollX }] }}>
+                      <Text style={styles.marqueeText} numberOfLines={1}>{activeMarquee}</Text>
+                    </Animated.View>
+                  </View>
+                )}
+              </>
+           )}
+        </View>
+     );
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
+    <>
+      <SafeAreaView style={styles.container}>
       {/* SIDEBAR */}
-      <View style={styles.sidebar}>
-        <View style={styles.sidebarHeader}>
+      <View style={[styles.sidebar, isCompact && { width: 60 }]}>
+        <View style={[styles.sidebarHeader, isCompact && { paddingHorizontal: 10, justifyContent: 'center' }]}>
           <Ionicons name="desktop" size={28} color="#3b82f6" />
-          <Text style={styles.sidebarTitle}>DTB</Text>
+          {!isCompact && <Text style={styles.sidebarTitle}>DTB</Text>}
         </View>
 
         <ScrollView style={styles.sidebarItems} contentContainerStyle={{paddingBottom: 20}} showsVerticalScrollIndicator={false}>
           {navItems.map((item) => (
             <TouchableOpacity 
               key={item.id} 
-              style={[styles.navItem, activeModule === item.id && styles.navItemActive]}
+              style={[styles.navItem, activeModule === item.id && styles.navItemActive, isCompact && { paddingHorizontal: 0, justifyContent: 'center' }]}
               onPress={() => setActiveModule(item.id)}
             >
               <Ionicons 
@@ -689,9 +851,11 @@ export default function VisualDTBApp() {
                 size={24} 
                 color={activeModule === item.id ? '#60a5fa' : '#94a3b8'} 
               />
-              <Text style={[styles.navItemText, activeModule === item.id && styles.navItemTextActive]}>
-                {item.label}
-              </Text>
+              {!isCompact && (
+                <Text style={[styles.navItemText, activeModule === item.id && styles.navItemTextActive]}>
+                  {item.label}
+                </Text>
+              )}
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -714,68 +878,18 @@ export default function VisualDTBApp() {
         {/* WORKSPACE & PREVIEW SPLIT */}
         <View style={styles.workspace}>
           {/* Module Controls Area */}
-          <View style={styles.controlsArea}>
+          <View style={[styles.controlsArea, isCompact && { flex: 2.5 }]}>
             {renderModuleContent()}
           </View>
 
           {/* TV Preview Area */}
-          <View style={styles.previewArea}>
+          <View style={[styles.previewArea, isCompact && { flex: 0.8, padding: 5 }]}>
             <View style={styles.previewHeader}>
               <Ionicons name="tv" size={14} color="#94a3b8" />
               <Text style={styles.previewTitle}>PANTALLA DE PROYECCIÓN {isFullscreen ? '(PANTALLA COMPLETA)' : ''}</Text>
             </View>
             <View style={[styles.previewScreen, isFullscreen && styles.previewScreenFullscreen]}>
-              
-              {isBlackout ? (
-                 <View style={{flex: 1, backgroundColor: 'black'}} />
-              ) : (
-                 <>
-                   {/* Background Media */}
-                   {backgroundMedia && backgroundMedia.type === 'image' && (
-                     <Image source={{ uri: backgroundMedia.uri }} style={[StyleSheet.absoluteFill, {width: '100%', height: '100%', resizeMode: 'cover', zIndex: -1}]} />
-                   )}
-                   {backgroundMedia && backgroundMedia.type === 'video' && (() => {
-                     const uri = backgroundMedia.uri;
-                     const baseUrl = uri.substring(0, uri.lastIndexOf('/') + 1);
-                     const fileName = uri.substring(uri.lastIndexOf('/') + 1);
-                     return (
-                       <View style={[StyleSheet.absoluteFill, {zIndex: -1}]}>
-                         <WebView 
-                           originWhitelist={['*']} 
-                           scrollEnabled={false}
-                           allowsInlineMediaPlayback={true}
-                           mediaPlaybackRequiresUserAction={false}
-                           allowFileAccessFromFileURLs={true}
-                           allowUniversalAccessFromFileURLs={true}
-                           source={{ html: `
-                              <style>body { margin: 0; background: black; overflow: hidden; }</style>
-                              <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;">
-                                <source src="${fileName}" type="video/mp4">
-                              </video>
-                           `, baseUrl: baseUrl }} 
-                           style={{flex: 1, backgroundColor: 'black'}} 
-                         />
-                       </View>
-                     );
-                   })()}
-
-                   {/* Brightness Overlay (Simulated Dimming) */}
-                   {brightness < 100 && (
-                     <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black', opacity: 1 - (brightness / 100), pointerEvents: 'none', zIndex: 40 }]} />
-                   )}
-                   
-                   {renderPreviewContent()}
-                   
-                   {activeMarquee !== '' && (
-                     <View style={styles.marqueeContainer}>
-                       <Animated.View style={{ transform: [{ translateX: scrollX }] }}>
-                         <Text style={styles.marqueeText} numberOfLines={1}>{activeMarquee}</Text>
-                       </Animated.View>
-                     </View>
-                   )}
-                 </>
-              )}
-
+              {renderProjectionScreen()}
             </View>
             <View style={{marginTop: 10}}>
                 <Text style={{color: '#64748b', fontSize: 12, textAlign: 'center'}}>
@@ -786,7 +900,7 @@ export default function VisualDTBApp() {
         </View>
 
         {/* BOTTOM TOOLBAR */}
-        <View style={styles.bottomToolbar}>
+        <View style={[styles.bottomToolbar, isCompact && { height: 'auto', flexWrap: 'wrap', paddingVertical: 10 }]}>
           <View style={styles.toolbarGroup}>
             <Ionicons name="sunny" size={18} color="#94a3b8" />
             <Text style={styles.toolbarLabel}>Brillo</Text>
@@ -862,7 +976,18 @@ export default function VisualDTBApp() {
           </View>
         </View>
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+      
+      {hasExternalDisplay && externalDisplayEnabled && (
+        <ExternalDisplay
+          mainScreenStyle={{ flex: 1 }}
+          fallbackInMainScreen={false}
+          screen={Object.keys(externalScreens)[0]}
+        >
+          {renderProjectionScreen()}
+        </ExternalDisplay>
+      )}
+    </>
   );
 }
 
