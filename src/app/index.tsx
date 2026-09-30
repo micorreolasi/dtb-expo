@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, TextInput, ScrollView, Image, Animated, Easing, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, Animated, Easing, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -499,10 +500,15 @@ export default function VisualDTBApp() {
                         <Text style={styles.projectButtonText}>Proyectar Directo</Text>
                      </TouchableOpacity>
                      <TouchableOpacity style={[styles.projectButton, {flex: 1, backgroundColor: '#8b5cf6'}]} onPress={() => {
-                        const newBg = { id: 'custom-'+Date.now(), type: mediaPreviewType, thumbnail: mediaPreviewUri, uri: mediaPreviewUri, name: 'Guardado' };
-                        setCustomBackgrounds([...customBackgrounds, newBg]);
-                        setBackgroundMedia({ type: mediaPreviewType || 'image', uri: mediaPreviewUri });
-                        setMediaPreviewUri(null);
+                        if (mediaPreviewUri) {
+                          const alreadyExists = [...defaultBackgrounds, ...customBackgrounds].some(bg => bg.uri === mediaPreviewUri);
+                          if (!alreadyExists) {
+                             const newBg = { id: 'custom-'+Date.now(), type: mediaPreviewType, thumbnail: mediaPreviewUri, uri: mediaPreviewUri, name: 'Guardado' };
+                             setCustomBackgrounds([...customBackgrounds, newBg]);
+                          }
+                          setBackgroundMedia({ type: mediaPreviewType || 'image', uri: mediaPreviewUri });
+                          setMediaPreviewUri(null);
+                        }
                      }}>
                         <Text style={styles.projectButtonText}>Fondo y Guardar</Text>
                      </TouchableOpacity>
@@ -626,21 +632,25 @@ export default function VisualDTBApp() {
     }
     if (projection.type === 'image') {
        return (
-         <View style={styles.previewContentCenter}>
+         <View style={[styles.previewContentCenter, { padding: 0 }]}>
             <Image source={{ uri: projection.content }} style={{width: '100%', height: '100%', resizeMode: 'contain'}} />
          </View>
        );
     }
     if (projection.type === 'video') {
+       const uri = projection.content;
+       const baseUrl = uri.substring(0, uri.lastIndexOf('/') + 1);
+       const fileName = uri.substring(uri.lastIndexOf('/') + 1);
+       
        const videoHtml = `
         <style>body { margin: 0; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }</style>
-        <video autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: contain;" src="${projection.content}"></video>
+        <video autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: contain;" src="${fileName}"></video>
        `;
        return (
-         <View style={styles.previewContentCenter}>
+         <View style={[styles.previewContentCenter, { padding: 0 }]}>
             <WebView 
               originWhitelist={['*']} 
-              source={{ html: videoHtml, baseUrl: projection.content }} 
+              source={{ html: videoHtml, baseUrl: baseUrl }} 
               allowsInlineMediaPlayback={true} 
               mediaPlaybackRequiresUserAction={false} 
               allowFileAccessFromFileURLs={true} 
@@ -667,7 +677,7 @@ export default function VisualDTBApp() {
           <Text style={styles.sidebarTitle}>DTB</Text>
         </View>
 
-        <View style={styles.sidebarItems}>
+        <ScrollView style={styles.sidebarItems} contentContainerStyle={{paddingBottom: 20}} showsVerticalScrollIndicator={false}>
           {navItems.map((item) => (
             <TouchableOpacity 
               key={item.id} 
@@ -684,7 +694,7 @@ export default function VisualDTBApp() {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
         
       </View>
 
@@ -724,21 +734,30 @@ export default function VisualDTBApp() {
                    {backgroundMedia && backgroundMedia.type === 'image' && (
                      <Image source={{ uri: backgroundMedia.uri }} style={[StyleSheet.absoluteFill, {width: '100%', height: '100%', resizeMode: 'cover', zIndex: -1}]} />
                    )}
-                   {backgroundMedia && backgroundMedia.type === 'video' && (
-                     <View style={[StyleSheet.absoluteFill, {zIndex: -1}]}>
-                       <WebView 
-                         originWhitelist={['*']} 
-                         scrollEnabled={false}
-                         source={{ html: `
-                            <style>body { margin: 0; background: black; overflow: hidden; }</style>
-                            <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;">
-                              <source src="${backgroundMedia.uri}" type="video/mp4">
-                            </video>
-                         ` }} 
-                         style={{flex: 1, backgroundColor: 'black'}} 
-                       />
-                     </View>
-                   )}
+                   {backgroundMedia && backgroundMedia.type === 'video' && (() => {
+                     const uri = backgroundMedia.uri;
+                     const baseUrl = uri.substring(0, uri.lastIndexOf('/') + 1);
+                     const fileName = uri.substring(uri.lastIndexOf('/') + 1);
+                     return (
+                       <View style={[StyleSheet.absoluteFill, {zIndex: -1}]}>
+                         <WebView 
+                           originWhitelist={['*']} 
+                           scrollEnabled={false}
+                           allowsInlineMediaPlayback={true}
+                           mediaPlaybackRequiresUserAction={false}
+                           allowFileAccessFromFileURLs={true}
+                           allowUniversalAccessFromFileURLs={true}
+                           source={{ html: `
+                              <style>body { margin: 0; background: black; overflow: hidden; }</style>
+                              <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;">
+                                <source src="${fileName}" type="video/mp4">
+                              </video>
+                           `, baseUrl: baseUrl }} 
+                           style={{flex: 1, backgroundColor: 'black'}} 
+                         />
+                       </View>
+                     );
+                   })()}
 
                    {/* Brightness Overlay (Simulated Dimming) */}
                    {brightness < 100 && (
@@ -769,10 +788,10 @@ export default function VisualDTBApp() {
         {/* BOTTOM TOOLBAR */}
         <View style={styles.bottomToolbar}>
           <View style={styles.toolbarGroup}>
-            <Ionicons name="sunny" size={20} color="#94a3b8" />
+            <Ionicons name="sunny" size={18} color="#94a3b8" />
             <Text style={styles.toolbarLabel}>Brillo</Text>
             <Slider
-              style={{width: 150, height: 40}}
+              style={{width: 90, height: 30}}
               minimumValue={10}
               maximumValue={100}
               value={brightness}
@@ -785,10 +804,10 @@ export default function VisualDTBApp() {
           </View>
           
           <View style={styles.toolbarGroup}>
-            <Text style={{color: '#94a3b8', fontWeight: 'bold', fontSize: 16}}>AA</Text>
+            <Text style={{color: '#94a3b8', fontWeight: 'bold', fontSize: 14}}>AA</Text>
             <Text style={styles.toolbarLabel}>Tamaño</Text>
             <Slider
-              style={{width: 150, height: 40}}
+              style={{width: 90, height: 30}}
               minimumValue={24}
               maximumValue={96}
               value={textSize}
@@ -806,39 +825,39 @@ export default function VisualDTBApp() {
           <View style={styles.toolbarActions}>
              {/* Playlist Controls */}
              {playlist && (
-               <View style={{flexDirection: 'row', marginRight: 10, borderWidth: 1, borderColor: '#334155', borderRadius: 8}}>
-                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#3b82f620', borderRadius: 0, borderRightWidth: 1, borderRightColor: '#334155', borderTopLeftRadius: 8, borderBottomLeftRadius: 8}]} onPress={handlePrevSlide}>
-                   <Ionicons name="chevron-up" size={20} color="#3b82f6" />
+               <View style={{flexDirection: 'row', marginRight: 6, borderWidth: 1, borderColor: '#334155', borderRadius: 6}}>
+                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#3b82f620', borderRadius: 0, borderRightWidth: 1, borderRightColor: '#334155', borderTopLeftRadius: 6, borderBottomLeftRadius: 6}]} onPress={handlePrevSlide}>
+                   <Ionicons name="chevron-up" size={16} color="#3b82f6" />
                  </TouchableOpacity>
-                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#3b82f620', borderRadius: 0, borderTopRightRadius: 8, borderBottomRightRadius: 8}]} onPress={handleNextSlide}>
-                   <Ionicons name="chevron-down" size={20} color="#3b82f6" />
+                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#3b82f620', borderRadius: 0, borderTopRightRadius: 6, borderBottomRightRadius: 6}]} onPress={handleNextSlide}>
+                   <Ionicons name="chevron-down" size={16} color="#3b82f6" />
                  </TouchableOpacity>
                </View>
              )}
 
              <TouchableOpacity 
-                style={[styles.actionBtn, {backgroundColor: '#f59e0b20', flexDirection: 'row', paddingHorizontal: 12, marginRight: 10}]} 
+                style={[styles.actionBtn, {backgroundColor: '#f59e0b20', flexDirection: 'row', paddingHorizontal: 8, marginRight: 6}]} 
                 onPress={() => setProjection({ type: 'text', content: '' })}>
-               <Ionicons name="trash" size={18} color="#f59e0b" style={{marginRight: 6}}/>
-               <Text style={{color: '#f59e0b', fontWeight: 'bold', fontSize: 12}}>Limpiar Texto</Text>
+               <Ionicons name="trash" size={14} color="#f59e0b" style={{marginRight: 4}}/>
+               <Text style={{color: '#f59e0b', fontWeight: 'bold', fontSize: 10}}>Limpiar</Text>
              </TouchableOpacity>
 
              <TouchableOpacity 
                 style={[styles.actionBtn, isPaused && styles.actionBtnActive]} 
                 onPress={() => setIsPaused(!isPaused)}>
-               <Ionicons name="pause" size={20} color={isPaused ? "#ffffff" : "#cbd5e1"} />
+               <Ionicons name="pause" size={16} color={isPaused ? "#ffffff" : "#cbd5e1"} />
              </TouchableOpacity>
 
              <TouchableOpacity 
                 style={[styles.actionBtn, isBlackout ? styles.actionBtnDanger : {backgroundColor: '#ef444420'}]} 
                 onPress={() => setIsBlackout(!isBlackout)}>
-               <Ionicons name="eye-off" size={20} color={isBlackout ? "#ffffff" : "#ef4444"} />
+               <Ionicons name="eye-off" size={16} color={isBlackout ? "#ffffff" : "#ef4444"} />
              </TouchableOpacity>
 
              <TouchableOpacity 
                 style={[styles.actionBtn, isFullscreen && styles.actionBtnSuccess]} 
                 onPress={() => setIsFullscreen(!isFullscreen)}>
-               <Ionicons name="expand" size={20} color={isFullscreen ? "#ffffff" : "#10b981"} />
+               <Ionicons name="expand" size={16} color={isFullscreen ? "#ffffff" : "#10b981"} />
              </TouchableOpacity>
           </View>
         </View>
@@ -894,8 +913,8 @@ const styles = StyleSheet.create({
   verseNumber: { color: '#3b82f6', fontWeight: 'bold', fontSize: 16, marginRight: 12 },
   verseText: { color: '#e2e8f0', fontSize: 16, lineHeight: 24, flex: 1 },
   textInput: { backgroundColor: '#1e293b', color: '#e2e8f0', padding: 16, borderRadius: 8, fontSize: 16, height: 120, textAlignVertical: 'top', marginBottom: 16 },
-  projectButton: { backgroundColor: '#3b82f6', padding: 16, borderRadius: 8, alignItems: 'center' },
-  projectButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
+  projectButton: { backgroundColor: '#3b82f6', padding: 12, borderRadius: 8, alignItems: 'center' },
+  projectButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   gridBox: { width: 120, height: 120, backgroundColor: '#1e293b', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   timerMock: { alignItems: 'center', justifyContent: 'center', height: 150, backgroundColor: '#1e293b', borderRadius: 8, marginBottom: 20 },
@@ -916,14 +935,14 @@ const styles = StyleSheet.create({
   marqueeContainer: { position: 'absolute', bottom: 0, width: '100%', height: 60, backgroundColor: 'rgba(220, 38, 38, 0.9)', justifyContent: 'center', zIndex: 50 },
   marqueeText: { color: '#ffffff', fontSize: 28, fontWeight: 'bold', paddingHorizontal: 20 },
 
-  bottomToolbar: { height: 60, backgroundColor: '#1e293b', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, gap: 24 },
-  toolbarGroup: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  toolbarLabel: { color: '#cbd5e1', fontSize: 14 },
-  sliderMock: { width: 150, height: 4, backgroundColor: '#334155', borderRadius: 2, justifyContent: 'center' },
-  sliderThumb: { width: 16, height: 16, borderRadius: 8, backgroundColor: '#ffffff', position: 'absolute', left: '80%' },
-  toolbarValue: { color: '#94a3b8', fontSize: 12 },
-  toolbarActions: { flexDirection: 'row', gap: 12 },
-  actionBtn: { width: 40, height: 40, borderRadius: 8, backgroundColor: '#334155', justifyContent: 'center', alignItems: 'center' },
+  bottomToolbar: { height: 50, backgroundColor: '#1e293b', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8, justifyContent: 'space-between' },
+  toolbarGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  toolbarLabel: { color: '#cbd5e1', fontSize: 12 },
+  sliderMock: { width: 90, height: 4, backgroundColor: '#334155', borderRadius: 2, justifyContent: 'center' },
+  sliderThumb: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#ffffff', position: 'absolute', left: '80%' },
+  toolbarValue: { color: '#94a3b8', fontSize: 10 },
+  toolbarActions: { flexDirection: 'row', gap: 6 },
+  actionBtn: { width: 32, height: 32, borderRadius: 6, backgroundColor: '#334155', justifyContent: 'center', alignItems: 'center' },
   actionBtnActive: { backgroundColor: '#3b82f6' },
   actionBtnDanger: { backgroundColor: '#ef4444' },
   actionBtnSuccess: { backgroundColor: '#10b981' },
