@@ -368,8 +368,8 @@ export default function VisualDTBApp() {
         const activeBibleObj = loadedBibles.find(b => b.id === activeBibleId) || loadedBibles[0];
         const currentBibleData = activeBibleObj.data;
         const filteredBooks = currentBibleData.filter((b: any) => b.name.toLowerCase().includes(bibleSearch.toLowerCase()));
-        const activeBookData = currentBibleData.find((b: any) => b.name === selectedBook) || currentBibleData[0];
-        const activeChapterData = activeBookData.chapters[selectedChapter - 1] || activeBookData.chapters[0];
+        const activeBookData = selectedBook ? (currentBibleData.find((b: any) => b.name === selectedBook) || null) : null;
+        const activeChapterData = activeBookData ? (activeBookData.chapters[selectedChapter - 1] || activeBookData.chapters[0] || []) : [];
 
         const handleLoadBible = async () => {
            try {
@@ -435,60 +435,95 @@ export default function VisualDTBApp() {
                   />
                 </View>
                 <ScrollView style={{flex: 1}}>
-                   {filteredBooks.map((b: any) => (
-                     <View key={b.name}>
-                       <TouchableOpacity style={styles.bookHeader} onPress={() => { setSelectedBook(b.name); setSelectedChapter(1); }}>
-                         <Text style={styles.bookHeaderText}>{b.name}</Text>
-                       </TouchableOpacity>
-                       {selectedBook === b.name && (
-                         <View style={{flexDirection: 'row', flexWrap: 'wrap', padding: 8, backgroundColor: '#0f172a'}}>
-                           {b.chapters.map((c: any, index: number) => {
-                             const chapterNum = index + 1;
-                             return (
-                               <TouchableOpacity 
-                                 key={`${b.name}-${chapterNum}`} 
-                                 style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center', margin: 4, borderRadius: 20, backgroundColor: selectedChapter === chapterNum ? '#3b82f6' : '#1e293b' }}
-                                 onPress={() => setSelectedChapter(chapterNum)}
-                               >
-                                 <Text style={{ color: selectedChapter === chapterNum ? '#ffffff' : '#94a3b8', fontWeight: 'bold' }}>{chapterNum}</Text>
-                               </TouchableOpacity>
-                             )
-                           })}
-                         </View>
-                       )}
-                     </View>
-                   ))}
+                   {filteredBooks.map((b: any) => {
+                     const isExpanded = selectedBook === b.name;
+                     return (
+                       <View key={b.name} style={{borderBottomWidth: 1, borderBottomColor: '#0f172a'}}>
+                         <TouchableOpacity 
+                           style={[
+                             styles.bookHeader, 
+                             isExpanded && { backgroundColor: '#1e293b', borderLeftWidth: 3, borderLeftColor: '#38bdf8' }
+                           ]} 
+                           onPress={() => {
+                             if (isExpanded) {
+                               setSelectedBook('');
+                             } else {
+                               setSelectedBook(b.name);
+                               setSelectedChapter(1);
+                             }
+                           }}
+                         >
+                           <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%'}}>
+                             <Text style={[styles.bookHeaderText, isExpanded && { color: '#38bdf8', fontWeight: 'bold' }]}>{b.name}</Text>
+                             <Ionicons 
+                               name={isExpanded ? "chevron-up" : "chevron-down"} 
+                               size={16} 
+                               color={isExpanded ? "#38bdf8" : "#64748b"} 
+                             />
+                           </View>
+                         </TouchableOpacity>
+                         {isExpanded && (
+                           <View style={{flexDirection: 'row', flexWrap: 'wrap', padding: 8, backgroundColor: '#0f172a'}}>
+                             {b.chapters.map((c: any, index: number) => {
+                               const chapterNum = index + 1;
+                               return (
+                                 <TouchableOpacity 
+                                   key={`${b.name}-${chapterNum}`} 
+                                   style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center', margin: 4, borderRadius: 20, backgroundColor: selectedChapter === chapterNum ? '#3b82f6' : '#1e293b' }}
+                                   onPress={() => setSelectedChapter(chapterNum)}
+                                 >
+                                   <Text style={{ color: selectedChapter === chapterNum ? '#ffffff' : '#94a3b8', fontWeight: 'bold' }}>{chapterNum}</Text>
+                                 </TouchableOpacity>
+                               );
+                             })}
+                           </View>
+                         )}
+                       </View>
+                     );
+                   })}
                 </ScrollView>
              </View>
 
              {/* Columna Derecha: Versículos */}
              <View style={[styles.columnRight, { flex: 1, padding: 12 }]}>
-               <Text style={[styles.mockTitle, { fontSize: 16, marginBottom: 10 }]}>{selectedBook} {selectedChapter} (RV1960)</Text>
-               <ScrollView style={{flex: 1}}>
-                 {activeChapterData.map((verseText: string, index: number) => {
-                   const verseNum = index + 1;
-                   return (
-                     <TouchableOpacity 
-                       key={verseNum}
-                       style={styles.mockVerse} 
-                       onPress={() => {
-                         const items = activeChapterData.map((v: string, i: number) => `${selectedBook} ${selectedChapter}:${i+1}\n${v}`);
-                         setPlaylist({ items, currentIndex: index });
-                         setProjection({ type: 'text', content: items[index] });
-                       }}
-                     >
-                       <Text style={styles.verseNumber}>{verseNum}</Text>
-                       <Text style={styles.verseText}>{verseText}</Text>
-                     </TouchableOpacity>
-                   )
-                 })}
-               </ScrollView>
+               {selectedBook && activeBookData ? (
+                 <>
+                   <Text style={[styles.mockTitle, { fontSize: 16, marginBottom: 10 }]}>{selectedBook} {selectedChapter} ({activeBibleObj?.name || 'Biblia'})</Text>
+                   <ScrollView style={{flex: 1}}>
+                     {activeChapterData.map((verseText: string, index: number) => {
+                       const verseNum = index + 1;
+                       return (
+                         <TouchableOpacity 
+                           key={verseNum}
+                           style={styles.mockVerse} 
+                           onPress={() => {
+                             const items = activeChapterData.map((v: string, i: number) => `${selectedBook} ${selectedChapter}:${i+1}\n${v}`);
+                             setPlaylist({ items, currentIndex: index });
+                             setProjection({ type: 'text', content: items[index] });
+                           }}
+                         >
+                           <Text style={styles.verseNumber}>{verseNum}</Text>
+                           <Text style={styles.verseText}>{verseText}</Text>
+                         </TouchableOpacity>
+                       );
+                     })}
+                   </ScrollView>
+                 </>
+               ) : (
+                 <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20}}>
+                   <Ionicons name="book-outline" size={48} color="#475569" style={{marginBottom: 12}} />
+                   <Text style={{color: '#94a3b8', fontSize: 16, fontWeight: 'bold', textAlign: 'center'}}>Ningún libro seleccionado</Text>
+                   <Text style={{color: '#64748b', fontSize: 13, textAlign: 'center', marginTop: 6, lineHeight: 18}}>
+                     Toca un libro en la columna izquierda para desplegar sus capítulos y versículos.
+                   </Text>
+                 </View>
+               )}
              </View>
           </View>
         );
 
       case 'Songs':
-        const activeSong = songsList.find(s => s.id === selectedSongId) || songsList[0];
+        const activeSong = selectedSongId ? (songsList.find(s => s.id === selectedSongId) || null) : null;
         const filteredSongs = songsList.filter(s => s.title.toLowerCase().includes(songSearch.toLowerCase()));
 
         return (
@@ -512,33 +547,81 @@ export default function VisualDTBApp() {
                   </TouchableOpacity>
                 </View>
                 <ScrollView style={{flex: 1}} keyboardShouldPersistTaps="always">
-                   {filteredSongs.map(s => (
-                     <TouchableOpacity 
-                       key={s.id}
-                       style={[
-                         styles.songListItem,
-                         selectedSongId === s.id && styles.songListItemActive,
-                         { paddingHorizontal: 12, paddingVertical: 12, justifyContent: 'space-between' }
-                       ]}
-                       onPress={() => { setSelectedSongId(s.id); setIsAddingSong(false); }}
-                     >
-                       <View style={{flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8}}>
-                         <Ionicons name="musical-note" size={16} color={selectedSongId === s.id ? "#3b82f6" : "#94a3b8"} style={{marginRight: 8}}/>
-                         <Text style={[styles.songListText, selectedSongId === s.id && {color: '#60a5fa', fontWeight: 'bold'}]} numberOfLines={1}>{s.title}</Text>
+                   {filteredSongs.map(s => {
+                     const isExpanded = selectedSongId === s.id;
+                     return (
+                       <View key={s.id} style={{borderBottomWidth: 1, borderBottomColor: '#1e293b'}}>
+                         <TouchableOpacity 
+                           style={[
+                             styles.songListItem,
+                             isExpanded && styles.songListItemActive,
+                             { paddingHorizontal: 12, paddingVertical: 12, justifyContent: 'space-between', borderBottomWidth: 0 }
+                           ]}
+                           onPress={() => {
+                             if (isExpanded) {
+                               setSelectedSongId('');
+                             } else {
+                               setSelectedSongId(s.id);
+                               setIsAddingSong(false);
+                             }
+                           }}
+                         >
+                           <View style={{flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8}}>
+                             <Ionicons name="musical-note" size={16} color={isExpanded ? "#38bdf8" : "#94a3b8"} style={{marginRight: 8}}/>
+                             <Text style={[styles.songListText, isExpanded && {color: '#38bdf8', fontWeight: 'bold'}]} numberOfLines={1}>{s.title}</Text>
+                           </View>
+                           
+                           <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                             {s.id.startsWith('custom') && (
+                               <>
+                                 <TouchableOpacity style={{padding: 4}} onPress={() => handleEditSong(s.id)}>
+                                   <Ionicons name="pencil" size={16} color="#60a5fa" />
+                                 </TouchableOpacity>
+                                 <TouchableOpacity style={{padding: 4}} onPress={() => handleDeleteSong(s.id)}>
+                                   <Ionicons name="trash" size={16} color="#ef4444" />
+                                 </TouchableOpacity>
+                               </>
+                             )}
+                             <Ionicons 
+                               name={isExpanded ? "chevron-up" : "chevron-down"} 
+                               size={16} 
+                               color={isExpanded ? "#38bdf8" : "#64748b"} 
+                             />
+                           </View>
+                         </TouchableOpacity>
+
+                         {isExpanded && (
+                           <View style={{backgroundColor: '#0f172a', padding: 8, paddingLeft: 12, borderTopWidth: 1, borderTopColor: '#1e293b'}}>
+                             {s.stanzas.map((stanza: any, stIndex: number) => {
+                               const isCurrentStanza = playlist?.items?.[playlist.currentIndex] === stanza.text;
+                               return (
+                                 <TouchableOpacity
+                                   key={stIndex}
+                                   style={{
+                                     flexDirection: 'row',
+                                     alignItems: 'center',
+                                     paddingVertical: 6,
+                                     paddingHorizontal: 8,
+                                     marginVertical: 2,
+                                     borderRadius: 6,
+                                     backgroundColor: isCurrentStanza ? '#1e3a8a' : '#1e293b',
+                                   }}
+                                   onPress={() => {
+                                     const items = s.stanzas.map((st: any) => st.text);
+                                     setPlaylist({ items, currentIndex: stIndex });
+                                     setProjection({ type: 'text', content: items[stIndex] });
+                                   }}
+                                 >
+                                   <Text style={{color: '#38bdf8', fontSize: 11, fontWeight: 'bold', width: 68}} numberOfLines={1}>{stanza.name}</Text>
+                                   <Text style={{color: '#94a3b8', fontSize: 11, flex: 1}} numberOfLines={1}>{stanza.text.replace(/\n/g, ' ')}</Text>
+                                 </TouchableOpacity>
+                               );
+                             })}
+                           </View>
+                         )}
                        </View>
-                       
-                       {s.id.startsWith('custom') && (
-                         <View style={{flexDirection: 'row', gap: 6}}>
-                           <TouchableOpacity style={{padding: 4}} onPress={() => handleEditSong(s.id)}>
-                             <Ionicons name="pencil" size={16} color="#60a5fa" />
-                           </TouchableOpacity>
-                           <TouchableOpacity style={{padding: 4}} onPress={() => handleDeleteSong(s.id)}>
-                             <Ionicons name="trash" size={16} color="#ef4444" />
-                           </TouchableOpacity>
-                         </View>
-                       )}
-                     </TouchableOpacity>
-                   ))}
+                     );
+                   })}
                 </ScrollView>
              </View>
 
@@ -573,30 +656,41 @@ export default function VisualDTBApp() {
                       <TouchableOpacity style={[styles.projectButton, {backgroundColor: '#ef4444'}]} onPress={() => setIsAddingSong(false)}>
                          <Text style={styles.projectButtonText}>Cancelar</Text>
                       </TouchableOpacity>
-                                         </View>
-                  </ScrollView>
-                ) : (
+                    </View>
+                 </ScrollView>
+               ) : activeSong ? (
                  <>
                    <Text style={styles.mockTitle}>{activeSong.title}</Text>
                    <ScrollView style={{flex: 1}}>
-                     {activeSong.stanzas.map((stanza, index) => (
-                       <TouchableOpacity 
-                         key={index}
-                         style={styles.mockVerse} 
-                         onPress={() => {
-                           const items = activeSong.stanzas.map((s: any) => s.text);
-                           setPlaylist({ items, currentIndex: index });
-                           setProjection({ type: 'text', content: items[index] });
-                         }}
-                       >
-                         <View style={{width: 80}}>
-                           <Text style={styles.verseNumber}>{stanza.name}</Text>
-                         </View>
-                         <Text style={styles.verseText}>{stanza.text}</Text>
-                       </TouchableOpacity>
-                     ))}
+                     {activeSong.stanzas.map((stanza, index) => {
+                       const isCurrentStanza = playlist?.items?.[playlist.currentIndex] === stanza.text;
+                       return (
+                         <TouchableOpacity 
+                           key={index}
+                           style={[styles.mockVerse, isCurrentStanza && { borderColor: '#3b82f6', borderWidth: 1 }]} 
+                           onPress={() => {
+                             const items = activeSong.stanzas.map((s: any) => s.text);
+                             setPlaylist({ items, currentIndex: index });
+                             setProjection({ type: 'text', content: items[index] });
+                           }}
+                         >
+                           <View style={{width: 80}}>
+                             <Text style={styles.verseNumber}>{stanza.name}</Text>
+                           </View>
+                           <Text style={styles.verseText}>{stanza.text}</Text>
+                         </TouchableOpacity>
+                       );
+                     })}
                    </ScrollView>
                  </>
+               ) : (
+                 <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20}}>
+                   <Ionicons name="musical-notes-outline" size={48} color="#475569" style={{marginBottom: 12}} />
+                   <Text style={{color: '#94a3b8', fontSize: 16, fontWeight: 'bold', textAlign: 'center'}}>Ninguna canción seleccionada</Text>
+                   <Text style={{color: '#64748b', fontSize: 13, textAlign: 'center', marginTop: 6, lineHeight: 18}}>
+                     Toca una canción en la columna izquierda para desplegarla y proyectar sus estrofas.
+                   </Text>
+                 </View>
                )}
              </View>
           </View>
