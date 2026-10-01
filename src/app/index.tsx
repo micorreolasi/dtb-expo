@@ -7,6 +7,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import { File as ExpoFile } from 'expo-file-system';
 import { WebView } from 'react-native-webview';
+import * as Sharing from 'expo-sharing';
 import Slider from '@react-native-community/slider';
 import ExternalDisplay, { useExternalDisplay } from '../utils/safeExternalDisplay';
 import fullBible from '../bible.json';
@@ -64,148 +65,7 @@ type ModuleType = 'Bible' | 'Songs' | 'Media' | 'Documents' | 'Messages' | 'Time
 type ProjectionData = {
   type: 'text' | 'image' | 'video' | 'web' | 'pdf' | 'document';
   content: string; 
-  base64?: string;
   title?: string;
-};
-
-const getPdfHtml = (base64: string) => `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0, user-scalable=yes">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      width: 100%;
-      background-color: #0b0f19;
-      color: #e2e8f0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-    body {
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-    }
-    .page-card {
-      margin-bottom: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 100%;
-      max-width: 900px;
-    }
-    canvas {
-      max-width: 100%;
-      height: auto !important;
-      border-radius: 6px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
-      background-color: #ffffff;
-    }
-    .page-footer {
-      font-size: 12px;
-      color: #94a3b8;
-      margin-top: 8px;
-      font-weight: 600;
-      background: rgba(30, 41, 59, 0.8);
-      padding: 4px 12px;
-      border-radius: 12px;
-    }
-    #loading {
-      padding: 40px 20px;
-      text-align: center;
-      color: #38bdf8;
-      font-size: 16px;
-      font-weight: bold;
-    }
-    .spinner {
-      border: 3px solid rgba(56, 189, 248, 0.2);
-      border-top: 3px solid #38bdf8;
-      border-radius: 50%;
-      width: 28px;
-      height: 28px;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 12px auto;
-    }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-  </style>
-</head>
-<body>
-  <div id="loading">
-    <div class="spinner"></div>
-    Cargando PDF...
-  </div>
-  <div id="pdf-container" style="width: 100%; display: flex; flex-direction: column; align-items: center;"></div>
-  
-  <script>
-    if (typeof pdfjsLib !== 'undefined') {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-      
-      try {
-        const raw = atob("${base64}");
-        const bytes = new Uint8Array(raw.length);
-        for (let i = 0; i < raw.length; i++) {
-          bytes[i] = raw.charCodeAt(i);
-        }
-        
-        pdfjsLib.getDocument({ data: bytes }).promise.then(async function(pdf) {
-          const loadingEl = document.getElementById('loading');
-          if (loadingEl) loadingEl.style.display = 'none';
-          const container = document.getElementById('pdf-container');
-          
-          for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-            const page = await pdf.getPage(pageNum);
-            const viewport = page.getViewport({ scale: 1.5 });
-            
-            const card = document.createElement('div');
-            card.className = 'page-card';
-            
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            
-            const footer = document.createElement('div');
-            footer.className = 'page-footer';
-            footer.textContent = 'Página ' + pageNum + ' de ' + pdf.numPages;
-            
-            card.appendChild(canvas);
-            card.appendChild(footer);
-            container.appendChild(card);
-            
-            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-          }
-        }).catch(function(err) {
-          document.getElementById('loading').innerHTML = '<span style="color:#ef4444">Error al procesar PDF: ' + err.message + '</span>';
-        });
-      } catch(e) {
-        document.getElementById('loading').innerHTML = '<span style="color:#ef4444">Error de datos: ' + e.message + '</span>';
-      }
-    } else {
-      document.getElementById('loading').innerHTML = '<span style="color:#ef4444">No se pudo cargar el visor de PDF.</span>';
-    }
-  </script>
-</body>
-</html>
-`;
-
-const readFileAsBase64 = async (uri: string): Promise<string> => {
-  try {
-    const file = new ExpoFile(uri);
-    if (typeof (file as any).base64 === 'function') {
-      const b64 = await (file as any).base64();
-      if (b64) return b64;
-    }
-  } catch (e) {
-    // Fallback to legacy API
-  }
-
-  return await FileSystemLegacy.readAsStringAsync(uri, {
-    encoding: FileSystemLegacy.EncodingType.Base64,
-  });
 };
 
 const readFileAsText = async (uri: string): Promise<string> => {
@@ -452,29 +312,32 @@ export default function VisualDTBApp() {
     setIsReadingDocument(true);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '*/*'],
+        type: '*/*',
         copyToCacheDirectory: true
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         const uri = asset.uri;
-        const fileName = asset.name || 'documento.pdf';
+        const fileName = asset.name || 'Documento';
         setCurrentDocName(fileName);
-
-        // Read file as base64 for Android PDF.js rendering
-        let base64Data: string | undefined = undefined;
-        try {
-          base64Data = await readFileAsBase64(uri);
-        } catch (readErr) {
-          console.warn('Could not read file as base64:', readErr);
-        }
 
         setProjection({
           type: 'document',
           content: uri,
-          base64: base64Data,
           title: fileName,
         });
+
+        // En Android, abrir con la app de visor de PDF / documentos del sistema
+        if (Platform.OS === 'android') {
+          try {
+            await Sharing.shareAsync(uri, {
+              dialogTitle: `Abrir ${fileName} con...`,
+              mimeType: asset.mimeType || 'application/pdf',
+            });
+          } catch (shareErr) {
+            console.warn('Could not launch external viewer:', shareErr);
+          }
+        }
       }
     } catch (err: any) {
       const msg = err?.message || String(err);
@@ -1021,10 +884,10 @@ export default function VisualDTBApp() {
             >
               <Ionicons name="document-text" size={44} color="#ef4444" />
               <Text style={{color: '#ef4444', marginTop: 10, fontWeight: 'bold', fontSize: 16}}>
-                {isReadingDocument ? 'Procesando archivo...' : 'Seleccionar Archivo PDF / Documento'}
+                {isReadingDocument ? 'Abriendo archivo...' : 'Seleccionar Archivo (PDF, PPTX, Word, etc.)'}
               </Text>
               <Text style={{color: '#94a3b8', fontSize: 12, marginTop: 4}}>
-                Compatible con Android y iPad / iOS
+                {Platform.OS === 'ios' ? 'Visualización integrada nativa en iPad' : 'Abre con tu app de PDF favorita en Android para proyectar'}
               </Text>
             </TouchableOpacity>
 
@@ -1039,19 +902,33 @@ export default function VisualDTBApp() {
                       {projection.title || currentDocName || 'Documento Activo'}
                     </Text>
                     <Text style={{color: '#10b981', fontSize: 12, marginTop: 2}}>
-                      Listo en Vista Previa y Proyección
+                      Listo para proyectar
                     </Text>
                   </View>
                 </View>
 
                 <View style={{flexDirection: 'row', gap: 10}}>
-                  <TouchableOpacity 
-                    style={[styles.projectButton, {flex: 1, backgroundColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]}
-                    onPress={() => setIsPresentationMode(true)}
-                  >
-                    <Ionicons name="tv" size={16} color="#ffffff" />
-                    <Text style={styles.projectButtonText}>Presentar en Pantalla Completa</Text>
-                  </TouchableOpacity>
+                  {Platform.OS === 'android' ? (
+                    <TouchableOpacity 
+                      style={[styles.projectButton, {flex: 1, backgroundColor: '#10b981', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]}
+                      onPress={async () => {
+                        try {
+                          await Sharing.shareAsync(projection.content, { dialogTitle: 'Abrir visor de PDF' });
+                        } catch (e) {}
+                      }}
+                    >
+                      <Ionicons name="open-outline" size={16} color="#ffffff" />
+                      <Text style={styles.projectButtonText}>Abrir en App de PDF</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity 
+                      style={[styles.projectButton, {flex: 1, backgroundColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]}
+                      onPress={() => setIsPresentationMode(true)}
+                    >
+                      <Ionicons name="tv" size={16} color="#ffffff" />
+                      <Text style={styles.projectButtonText}>Presentar en Pantalla Completa</Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity 
                     style={[styles.projectButton, {backgroundColor: '#334155', paddingHorizontal: 16}]}
@@ -1233,22 +1110,7 @@ export default function VisualDTBApp() {
     if (projection.type === 'pdf' || projection.type === 'document') {
        const uri = projection.content;
        
-       // Android (or any platform) with base64 data: render via Mozilla PDF.js in WebView
-       if (projection.base64) {
-         return (
-           <WebView 
-             key={uri}
-             source={{ html: getPdfHtml(projection.base64) }} 
-             style={{ flex: 1, backgroundColor: '#0b0f19' }} 
-             javaScriptEnabled={true} 
-             domStorageEnabled={true} 
-             originWhitelist={['*']} 
-             scalesPageToFit={true}
-           />
-         );
-       }
-
-       // Remote HTTP/HTTPS PDF
+       // Remote HTTP/HTTPS PDF or document
        if (uri.startsWith('http://') || uri.startsWith('https://')) {
          if (Platform.OS === 'android') {
            const googleDocsUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(uri)}`;
@@ -1257,7 +1119,7 @@ export default function VisualDTBApp() {
          return <WebView source={{ uri }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} />;
        }
 
-       // iOS native file URI rendering
+       // iOS (iPad) - Native WKWebView handles PDF, PPT, PPTX, Word, audio, video directly!
        if (Platform.OS === 'ios') {
          return (
            <WebView 
@@ -1273,16 +1135,27 @@ export default function VisualDTBApp() {
          );
        }
 
-       // Android fallback if base64 is missing
+       // Android - Local files open via native Android PDF app
        return (
          <View style={styles.previewContentCenter}>
-           <Ionicons name="document-text" size={48} color="#94a3b8" />
-           <Text style={{color: '#e2e8f0', marginTop: 10, textAlign: 'center', fontWeight: 'bold'}}>
-             {projection.title || 'Documento cargado'}
+           <Ionicons name="document-text" size={48} color="#38bdf8" />
+           <Text style={{color: '#ffffff', marginTop: 10, textAlign: 'center', fontWeight: 'bold', fontSize: 15}} numberOfLines={1}>
+             {projection.title || currentDocName || 'Documento'}
            </Text>
-           <Text style={{color: '#94a3b8', fontSize: 12, marginTop: 4, textAlign: 'center'}}>
-             Selecciona el archivo nuevamente para visualizarlo en pantalla.
+           <Text style={{color: '#94a3b8', fontSize: 11, marginTop: 4, textAlign: 'center', paddingHorizontal: 12}}>
+             Abre con tu app de PDF de Android para proyectar
            </Text>
+           <TouchableOpacity
+             style={{marginTop: 10, backgroundColor: '#10b981', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6}}
+             onPress={async () => {
+               try {
+                 await Sharing.shareAsync(uri, { dialogTitle: 'Abrir con...' });
+               } catch (e) {}
+             }}
+           >
+             <Ionicons name="open-outline" size={14} color="#ffffff" />
+             <Text style={{color: '#ffffff', fontWeight: 'bold', fontSize: 12}}>Abrir en App de PDF</Text>
+           </TouchableOpacity>
          </View>
        );
     }
