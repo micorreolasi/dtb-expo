@@ -359,18 +359,18 @@ export default function VisualDTBApp() {
       interval = setInterval(() => {
         setTimeLeft(prev => {
           const newTime = prev - 1;
-          if (projection.content.includes('⏳')) {
+          if (projection.content.includes('\u23F3')) {
              const mins = Math.floor(newTime / 60).toString().padStart(2, '0');
              const secs = (newTime % 60).toString().padStart(2, '0');
-             setProjection({ type: 'text', content: `⏳ ${mins}:${secs}` });
+             setProjection({ type: 'text', content: '\u23F3 ' + mins + ':' + secs });
           }
           return newTime;
         });
       }, 1000);
     } else if (timeLeft === 0 && timerRunning) {
       setTimerRunning(false);
-      if (projection.content.includes('⏳')) {
-         setProjection({ type: 'text', content: `¡Tiempo Finalizado!` });
+      if (projection.content.includes('\u23F3')) {
+         setProjection({ type: 'text', content: 'Tiempo Finalizado' });
       }
     }
     return () => clearInterval(interval);
@@ -1010,7 +1010,7 @@ export default function VisualDTBApp() {
                       {projection.title || currentDocName || 'Documento Activo'}
                     </Text>
                     <Text style={{color: '#10b981', fontSize: 12, marginTop: 2}}>
-                      ✅ Listo en Vista Previa y Proyección
+                      Listo en Vista Previa y Proyección
                     </Text>
                   </View>
                 </View>
@@ -1078,7 +1078,7 @@ export default function VisualDTBApp() {
                <Text style={styles.timerTextMock}>{formatTime(timeLeft)}</Text>
             </View>
             <View style={{flexDirection: 'row', gap: 12, marginBottom: 20}}>
-               <TouchableOpacity style={[styles.projectButton, {flex: 1, backgroundColor: '#10b981'}]} onPress={() => { setTimerRunning(true); setProjection({ type: 'text', content: `⏳ ${formatTime(timeLeft)}` }); }}>
+               <TouchableOpacity style={[styles.projectButton, {flex: 1, backgroundColor: '#10b981'}]} onPress={() => { setTimerRunning(true); setProjection({ type: 'text', content: '\u23F3 ' + formatTime(timeLeft) }); }}>
                  <Text style={styles.projectButtonText}>{timerRunning ? 'Corriendo...' : 'Iniciar Timer'}</Text>
                </TouchableOpacity>
                <TouchableOpacity style={[styles.projectButton, {flex: 1, backgroundColor: '#ef4444'}]} onPress={() => setTimerRunning(false)}>
@@ -1162,9 +1162,9 @@ export default function VisualDTBApp() {
                 </TouchableOpacity>
              </View>
              {hasExternalDisplay ? (
-                <Text style={{color: '#10b981', marginTop: 10, padding: 10, backgroundColor: '#064e3b', borderRadius: 6}}>✅ Pantalla externa detectada.</Text>
+                <Text style={{color: '#10b981', marginTop: 10, padding: 10, backgroundColor: '#064e3b', borderRadius: 6}}>Pantalla externa detectada.</Text>
              ) : (
-                <Text style={{color: '#f59e0b', marginTop: 10, padding: 10, backgroundColor: '#78350f', borderRadius: 6}}>⚠️ No se detecta pantalla externa. Conecta por HDMI o AirPlay.</Text>
+                <Text style={{color: '#f59e0b', marginTop: 10, padding: 10, backgroundColor: '#78350f', borderRadius: 6}}>No se detecta pantalla externa. Conecta por HDMI o AirPlay.</Text>
              )}
              <Text style={{color: '#94a3b8', marginTop: 10, fontSize: 12}}>Nota: Requiere App Nativa (EAS Build). En Expo Go, esta función no está soportada.</Text>
           </ScrollView>
@@ -1489,7 +1489,7 @@ export default function VisualDTBApp() {
             </View>
             <View style={{marginTop: 6}}>
                 <Text style={{color: '#64748b', fontSize: 10, textAlign: 'center'}}>
-                  {isPaused ? '⏸️ PAUSADO' : 'Vista previa de TV'}
+                  {isPaused ? 'PAUSADO' : 'Vista previa de TV'}
                 </Text>
             </View>
           </View>
