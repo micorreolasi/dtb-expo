@@ -130,7 +130,9 @@ const mockSongs = [
 
 
 export default function VisualDTBApp() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  const isPortrait = height >= width;
   const isCompact = width < 768;
 
   const [activeModule, setActiveModule] = useState<ModuleType>('Bible');
@@ -179,9 +181,10 @@ export default function VisualDTBApp() {
   const [mediaPreviewType, setMediaPreviewType] = useState<'image'|'video'|null>(null);
   const [customBackgrounds, setCustomBackgrounds] = useState<any[]>(defaultBackgrounds);
 
-  // Toolbar Slider states
+  // Toolbar Slider & Color states
   const [brightness, setBrightness] = useState<number>(100);
   const [textSize, setTextSize] = useState<number>(48);
+  const [textColor, setTextColor] = useState<string>('#ffffff');
 
   // External Display State
   const externalScreens = useExternalDisplay();
@@ -401,9 +404,9 @@ export default function VisualDTBApp() {
         };
 
         return (
-          <View style={[styles.twoColumnLayout, isCompact && { flexDirection: 'column' }]}>
+          <View style={[styles.twoColumnLayout, isPortrait && { flexDirection: 'column' }]}>
              {/* Columna Izquierda: Buscador y Libros */}
-             <View style={[styles.columnLeft, isCompact && { flex: 0.5, borderRightWidth: 0, borderBottomWidth: 1 }]}>
+             <View style={[styles.columnLeft, isLandscape ? { width: Math.min(240, width * 0.32) } : { height: 220, borderRightWidth: 0, borderBottomWidth: 1 }]}>
                 <View style={{flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderBottomColor: '#1e293b'}}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {loadedBibles.map(b => (
@@ -459,8 +462,8 @@ export default function VisualDTBApp() {
              </View>
 
              {/* Columna Derecha: Versículos */}
-             <View style={[styles.columnRight, isCompact && { padding: 5 }]}>
-               <Text style={[styles.mockTitle, isCompact && { fontSize: 16 }]}>{selectedBook} {selectedChapter} (RV1960)</Text>
+             <View style={[styles.columnRight, { flex: 1, padding: 12 }]}>
+               <Text style={[styles.mockTitle, { fontSize: 16, marginBottom: 10 }]}>{selectedBook} {selectedChapter} (RV1960)</Text>
                <ScrollView style={{flex: 1}}>
                  {activeChapterData.map((verseText: string, index: number) => {
                    const verseNum = index + 1;
@@ -489,9 +492,9 @@ export default function VisualDTBApp() {
         const filteredSongs = songsList.filter(s => s.title.toLowerCase().includes(songSearch.toLowerCase()));
 
         return (
-          <View style={[styles.twoColumnLayout, isCompact && { flexDirection: 'column' }]}>
+          <View style={[styles.twoColumnLayout, isPortrait && { flexDirection: 'column' }]}>
              {/* Columna Izquierda: Canciones */}
-             <View style={[styles.columnLeft, isCompact && { flex: 0.5, borderRightWidth: 0, borderBottomWidth: 1 }]}>
+             <View style={[styles.columnLeft, isLandscape ? { width: Math.min(240, width * 0.32) } : { height: 200, borderRightWidth: 0, borderBottomWidth: 1 }]}>
                 <View style={styles.searchBar}>
                   <Ionicons name="search" size={16} color="#94a3b8" />
                   <TextInput 
@@ -508,36 +511,39 @@ export default function VisualDTBApp() {
                      <Text style={{color: 'white', fontWeight: 'bold'}}>+ Nueva</Text>
                   </TouchableOpacity>
                 </View>
-                <ScrollView style={{flex: 1}}>
+                <ScrollView style={{flex: 1}} keyboardShouldPersistTaps="always">
                    {filteredSongs.map(s => (
-                     <ScrollView key={s.id} horizontal showsHorizontalScrollIndicator={false} snapToInterval={350} decelerationRate="fast">
-                       <View style={{flexDirection: 'row'}}>
-                         <TouchableOpacity 
-                           style={[styles.songListItem, {width: isCompact ? 140 : 250}, selectedSongId === s.id && styles.songListItemActive]}
-                           onPress={() => { setSelectedSongId(s.id); setIsAddingSong(false); }}
-                         >
-                           <Ionicons name="musical-note" size={16} color={selectedSongId === s.id ? "#3b82f6" : "#94a3b8"} style={{marginRight: 8}}/>
-                           <Text style={[styles.songListText, selectedSongId === s.id && {color: '#60a5fa', fontWeight: 'bold'}]} numberOfLines={1}>{s.title}</Text>
-                         </TouchableOpacity>
-                         
-                         {s.id.startsWith('custom') && (
-                           <>
-                             <TouchableOpacity style={{width: 50, backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center'}} onPress={() => handleEditSong(s.id)}>
-                               <Ionicons name="pencil" size={20} color="white" />
-                             </TouchableOpacity>
-                             <TouchableOpacity style={{width: 50, backgroundColor: '#ef4444', justifyContent: 'center', alignItems: 'center'}} onPress={() => handleDeleteSong(s.id)}>
-                               <Ionicons name="trash" size={20} color="white" />
-                             </TouchableOpacity>
-                           </>
-                         )}
+                     <TouchableOpacity 
+                       key={s.id}
+                       style={[
+                         styles.songListItem,
+                         selectedSongId === s.id && styles.songListItemActive,
+                         { paddingHorizontal: 12, paddingVertical: 12, justifyContent: 'space-between' }
+                       ]}
+                       onPress={() => { setSelectedSongId(s.id); setIsAddingSong(false); }}
+                     >
+                       <View style={{flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8}}>
+                         <Ionicons name="musical-note" size={16} color={selectedSongId === s.id ? "#3b82f6" : "#94a3b8"} style={{marginRight: 8}}/>
+                         <Text style={[styles.songListText, selectedSongId === s.id && {color: '#60a5fa', fontWeight: 'bold'}]} numberOfLines={1}>{s.title}</Text>
                        </View>
-                     </ScrollView>
+                       
+                       {s.id.startsWith('custom') && (
+                         <View style={{flexDirection: 'row', gap: 6}}>
+                           <TouchableOpacity style={{padding: 4}} onPress={() => handleEditSong(s.id)}>
+                             <Ionicons name="pencil" size={16} color="#60a5fa" />
+                           </TouchableOpacity>
+                           <TouchableOpacity style={{padding: 4}} onPress={() => handleDeleteSong(s.id)}>
+                             <Ionicons name="trash" size={16} color="#ef4444" />
+                           </TouchableOpacity>
+                         </View>
+                       )}
+                     </TouchableOpacity>
                    ))}
                 </ScrollView>
              </View>
 
              {/* Columna Derecha: Estrofas o Formulario */}
-             <View style={[styles.columnRight, isCompact && { padding: 5 }]}>
+             <View style={[styles.columnRight, { flex: 1, padding: 12 }]}>
                {isAddingSong ? (
                  <ScrollView style={{flex: 1, padding: 16}} contentContainerStyle={{paddingBottom: 40}}>
                      <Text style={styles.mockTitle}>Crear Nueva Canción</Text>
@@ -838,7 +844,7 @@ export default function VisualDTBApp() {
     if (projection.type === 'text') {
        return (
          <View style={styles.previewContentCenter}>
-            <Text style={[styles.previewText, { fontSize: Math.max(textSize, 60), flexShrink: 1, width: '100%' }]} adjustsFontSizeToFit minimumFontScale={0.1} numberOfLines={25}>{projection.content}</Text>
+            <Text style={[styles.previewText, { fontSize: Math.max(textSize, 60), color: textColor, flexShrink: 1, width: '100%' }]} adjustsFontSizeToFit minimumFontScale={0.1} numberOfLines={25}>{projection.content}</Text>
          </View>
        );
     }
@@ -948,7 +954,7 @@ export default function VisualDTBApp() {
                 {/* Content - lightweight text rendering for text, standard for others */}
                 {projection.type === 'text' ? (
                   <View style={styles.previewContentCenter}>
-                    <Text style={[styles.previewText, { fontSize: textSize, width: '100%' }]} numberOfLines={25}>{projection.content}</Text>
+                    <Text style={[styles.previewText, { fontSize: textSize, color: textColor, width: '100%' }]} numberOfLines={25}>{projection.content}</Text>
                   </View>
                 ) : renderPreviewContent()}
 
@@ -1096,34 +1102,34 @@ export default function VisualDTBApp() {
         {/* WORKSPACE & PREVIEW SPLIT */}
         <View style={styles.workspace}>
           {/* Module Controls Area */}
-          <View style={[styles.controlsArea, isCompact && { flex: 2.5 }]}>
+          <View style={styles.controlsArea}>
             {renderModuleContent()}
           </View>
 
           {/* TV Preview Area */}
-          <View style={[styles.previewArea, isCompact && { flex: 0.8, padding: 5 }]}>
+          <View style={[styles.previewArea, isLandscape && isCompact ? { width: 170, padding: 8 } : isCompact ? { width: '100%', height: 180, padding: 8 } : { width: 280, padding: 16 }]}>
             <View style={styles.previewHeader}>
               <Ionicons name="tv" size={14} color="#94a3b8" />
-              <Text style={styles.previewTitle}>PANTALLA DE PROYECCIÓN {isFullscreen ? '(PANTALLA COMPLETA)' : ''}</Text>
+              <Text style={styles.previewTitle}>PROYECCIÓN</Text>
             </View>
             <View style={[styles.previewScreen, isFullscreen && styles.previewScreenFullscreen]}>
               {renderProjectionScreen()}
             </View>
-            <View style={{marginTop: 10}}>
-                <Text style={{color: '#64748b', fontSize: 12, textAlign: 'center'}}>
-                  {isPaused ? '⏸️ LA PROYECCIÓN ESTÁ PAUSADA' : 'Lo que ves aquí es lo que verá la audiencia.'}
+            <View style={{marginTop: 6}}>
+                <Text style={{color: '#64748b', fontSize: 10, textAlign: 'center'}}>
+                  {isPaused ? '⏸️ PAUSADO' : 'Vista previa de TV'}
                 </Text>
             </View>
           </View>
         </View>
 
         {/* BOTTOM TOOLBAR */}
-        <View style={[styles.bottomToolbar, isCompact && { height: 'auto', flexWrap: 'wrap', paddingVertical: 10 }]}>
+        <View style={[styles.bottomToolbar, isCompact && { height: 48, paddingVertical: 4, paddingHorizontal: 8 }]}>
           <View style={styles.toolbarGroup}>
-            <Ionicons name="sunny" size={18} color="#94a3b8" />
-            <Text style={styles.toolbarLabel}>Brillo</Text>
+            <Ionicons name="sunny" size={16} color="#94a3b8" />
+            <Text style={[styles.toolbarLabel, isCompact && { display: 'none' }]}>Brillo</Text>
             <Slider
-              style={{width: 90, height: 30}}
+              style={{width: isCompact ? 65 : 90, height: 30}}
               minimumValue={10}
               maximumValue={100}
               value={brightness}
@@ -1135,20 +1141,27 @@ export default function VisualDTBApp() {
             <Text style={styles.toolbarValue}>{Math.round(brightness)}%</Text>
           </View>
           
+          {/* Selector de Color de Letra */}
           <View style={styles.toolbarGroup}>
-            <Text style={{color: '#94a3b8', fontWeight: 'bold', fontSize: 14}}>AA</Text>
-            <Text style={styles.toolbarLabel}>Tamaño</Text>
-            <Slider
-              style={{width: 90, height: 30}}
-              minimumValue={24}
-              maximumValue={96}
-              value={textSize}
-              onValueChange={setTextSize}
-              minimumTrackTintColor="#ffffff"
-              maximumTrackTintColor="#334155"
-              thumbTintColor="#ffffff"
-            />
-            <Text style={styles.toolbarValue}>{Math.round(textSize)}</Text>
+            <Ionicons name="color-palette" size={16} color="#94a3b8" />
+            <Text style={[styles.toolbarLabel, isCompact && { display: 'none' }]}>Color</Text>
+            <View style={{flexDirection: 'row', gap: 6, alignItems: 'center', backgroundColor: '#0f172a', paddingHorizontal: 6, paddingVertical: 4, borderRadius: 16}}>
+              {['#ffffff', '#facc15', '#38bdf8', '#4ade80', '#fb923c', '#f472b6'].map(c => (
+                <TouchableOpacity
+                  key={c}
+                  onPress={() => setTextColor(c)}
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 9,
+                    backgroundColor: c,
+                    borderWidth: textColor === c ? 2 : 1,
+                    borderColor: textColor === c ? '#3b82f6' : '#475569',
+                    transform: [{ scale: textColor === c ? 1.25 : 1 }]
+                  }}
+                />
+              ))}
+            </View>
           </View>
 
           <View style={{flex: 1}} />
