@@ -63,7 +63,133 @@ type ModuleType = 'Bible' | 'Songs' | 'Media' | 'Documents' | 'Messages' | 'Time
 type ProjectionData = {
   type: 'text' | 'image' | 'video' | 'web' | 'pdf' | 'document';
   content: string; 
+  base64?: string;
+  title?: string;
 };
+
+const getPdfHtml = (base64: string) => `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0, user-scalable=yes">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      background-color: #0b0f19;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    body {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .page-card {
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 900px;
+    }
+    canvas {
+      max-width: 100%;
+      height: auto !important;
+      border-radius: 6px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+      background-color: #ffffff;
+    }
+    .page-footer {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 8px;
+      font-weight: 600;
+      background: rgba(30, 41, 59, 0.8);
+      padding: 4px 12px;
+      border-radius: 12px;
+    }
+    #loading {
+      padding: 40px 20px;
+      text-align: center;
+      color: #38bdf8;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .spinner {
+      border: 3px solid rgba(56, 189, 248, 0.2);
+      border-top: 3px solid #38bdf8;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px auto;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    Cargando PDF...
+  </div>
+  <div id="pdf-container" style="width: 100%; display: flex; flex-direction: column; align-items: center;"></div>
+  
+  <script>
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+      
+      try {
+        const raw = atob("${base64}");
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) {
+          bytes[i] = raw.charCodeAt(i);
+        }
+        
+        pdfjsLib.getDocument({ data: bytes }).promise.then(async function(pdf) {
+          const loadingEl = document.getElementById('loading');
+          if (loadingEl) loadingEl.style.display = 'none';
+          const container = document.getElementById('pdf-container');
+          
+          for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 1.5 });
+            
+            const card = document.createElement('div');
+            card.className = 'page-card';
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            
+            const footer = document.createElement('div');
+            footer.className = 'page-footer';
+            footer.textContent = 'Página ' + pageNum + ' de ' + pdf.numPages;
+            
+            card.appendChild(canvas);
+            card.appendChild(footer);
+            container.appendChild(card);
+            
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+          }
+        }).catch(function(err) {
+          document.getElementById('loading').innerHTML = '<span style="color:#ef4444">Error al procesar PDF: ' + err.message + '</span>';
+        });
+      } catch(e) {
+        document.getElementById('loading').innerHTML = '<span style="color:#ef4444">Error de datos: ' + e.message + '</span>';
+      }
+    } else {
+      document.getElementById('loading').innerHTML = '<span style="color:#ef4444">No se pudo cargar el visor de PDF.</span>';
+    }
+  </script>
+</body>
+</html>
+`;
 
 const defaultBackgrounds = [
   {
@@ -191,6 +317,11 @@ export default function VisualDTBApp() {
   const hasExternalDisplay = Object.keys(externalScreens).length > 0;
   const [externalDisplayEnabled, setExternalDisplayEnabled] = useState<boolean>(true);
 
+  // Document State & Picking Lock
+  const isPickingDocRef = useRef<boolean>(false);
+  const [isReadingDocument, setIsReadingDocument] = useState<boolean>(false);
+  const [currentDocName, setCurrentDocName] = useState<string>('');
+
   // Playlist Navigation
   const [playlist, setPlaylist] = useState<{ items: string[], currentIndex: number } | null>(null);
 
@@ -263,25 +394,69 @@ export default function VisualDTBApp() {
   ];
 
   const pickMedia = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsEditing: false,
-      quality: 1,
-    });
-    if (!result.canceled) {
-      setMediaPreviewUri(result.assets[0].uri);
-      setMediaPreviewType(result.assets[0].type === 'video' ? 'video' : 'image');
+    if (isPickingDocRef.current) return;
+    isPickingDocRef.current = true;
+    try {
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsEditing: false,
+        quality: 1,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setMediaPreviewUri(result.assets[0].uri);
+        setMediaPreviewType(result.assets[0].type === 'video' ? 'video' : 'image');
+      }
+    } catch (err) {
+      console.warn('pickMedia error:', err);
+    } finally {
+      setTimeout(() => {
+        isPickingDocRef.current = false;
+      }, 500);
     }
   };
 
   const pickDocument = async () => {
-    let result = await DocumentPicker.getDocumentAsync({
-      type: '*/*',
-      copyToCacheDirectory: true
-    });
-    if (!result.canceled) {
-       // WebView en iOS puede renderizar PDF, PPT, PPTX, DOC, DOCX
-       setProjection({ type: 'document', content: result.assets[0].uri });
+    if (isPickingDocRef.current) return;
+    isPickingDocRef.current = true;
+    setIsReadingDocument(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '*/*'],
+        copyToCacheDirectory: true
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const uri = asset.uri;
+        const fileName = asset.name || 'documento.pdf';
+        setCurrentDocName(fileName);
+
+        // Read file as base64 for Android PDF.js rendering
+        let base64Data: string | undefined = undefined;
+        try {
+          base64Data = await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+        } catch (readErr) {
+          console.warn('Could not read file as base64:', readErr);
+        }
+
+        setProjection({
+          type: 'document',
+          content: uri,
+          base64: base64Data,
+          title: fileName,
+        });
+      }
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (!msg.includes('Different document picking in progress')) {
+        Alert.alert('Aviso', 'No se pudo seleccionar el documento: ' + msg);
+      }
+    } finally {
+      setIsReadingDocument(false);
+      setTimeout(() => {
+        isPickingDocRef.current = false;
+      }, 600);
     }
   };
 
@@ -372,6 +547,8 @@ export default function VisualDTBApp() {
         const activeChapterData = activeBookData ? (activeBookData.chapters[selectedChapter - 1] || activeBookData.chapters[0] || []) : [];
 
         const handleLoadBible = async () => {
+           if (isPickingDocRef.current) return;
+           isPickingDocRef.current = true;
            try {
              let result = await DocumentPicker.getDocumentAsync({
                type: '*/*',
@@ -398,8 +575,15 @@ export default function VisualDTBApp() {
                    Alert.alert('Error', 'El formato del archivo JSON no es compatible.');
                 }
              }
-           } catch(e) {
-             Alert.alert('Error', 'No se pudo leer el archivo: ' + e);
+           } catch(e: any) {
+             const msg = e?.message || String(e);
+             if (!msg.includes('Different document picking in progress')) {
+               Alert.alert('Error', 'No se pudo leer el archivo: ' + msg);
+             }
+           } finally {
+             setTimeout(() => {
+               isPickingDocRef.current = false;
+             }, 600);
            }
         };
 
@@ -784,16 +968,73 @@ export default function VisualDTBApp() {
         );
 
       case 'Documents':
+        const hasDoc = projection.type === 'document' || projection.type === 'pdf';
         return (
-          <View style={styles.moduleContentSingle}>
-            <Text style={styles.mockTitle}>Gestor de Archivos (PDF, PPTX, DOCX)</Text>
-            <View style={styles.gridContainer}>
-                 <TouchableOpacity style={[styles.gridBox, {width: '100%', height: 200, backgroundColor: '#ef444420', borderColor: '#ef4444', borderWidth: 2, borderStyle: 'dashed'}]} onPress={pickDocument}>
-                   <Ionicons name="document-text" size={48} color="#ef4444" />
-                   <Text style={{color: '#ef4444', marginTop: 10, fontWeight: 'bold'}}>Seleccionar y Visualizar Archivo (PDF, PPT, Word)</Text>
-                 </TouchableOpacity>
-            </View>
-          </View>
+          <ScrollView style={styles.moduleContentSingle}>
+            <Text style={styles.mockTitle}>Gestor de Documentos (PDF, PPTX, Word)</Text>
+            
+            <TouchableOpacity 
+              style={[
+                styles.gridBox, 
+                { 
+                  width: '100%', 
+                  height: 160, 
+                  backgroundColor: '#ef444415', 
+                  borderColor: '#ef4444', 
+                  borderWidth: 2, 
+                  borderStyle: 'dashed',
+                  borderRadius: 12,
+                  marginBottom: 20
+                }
+              ]} 
+              onPress={pickDocument}
+              disabled={isReadingDocument}
+            >
+              <Ionicons name="document-text" size={44} color="#ef4444" />
+              <Text style={{color: '#ef4444', marginTop: 10, fontWeight: 'bold', fontSize: 16}}>
+                {isReadingDocument ? 'Procesando archivo...' : 'Seleccionar Archivo PDF / Documento'}
+              </Text>
+              <Text style={{color: '#94a3b8', fontSize: 12, marginTop: 4}}>
+                Compatible con Android y iPad / iOS
+              </Text>
+            </TouchableOpacity>
+
+            {hasDoc && (
+              <View style={{backgroundColor: '#1e293b', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#334155'}}>
+                <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 12}}>
+                  <View style={{width: 40, height: 40, borderRadius: 8, backgroundColor: '#ef444420', justifyContent: 'center', alignItems: 'center', marginRight: 12}}>
+                    <Ionicons name="document" size={24} color="#ef4444" />
+                  </View>
+                  <View style={{flex: 1}}>
+                    <Text style={{color: '#ffffff', fontWeight: 'bold', fontSize: 15}} numberOfLines={1}>
+                      {projection.title || currentDocName || 'Documento Activo'}
+                    </Text>
+                    <Text style={{color: '#10b981', fontSize: 12, marginTop: 2}}>
+                      ✅ Listo en Vista Previa y Proyección
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{flexDirection: 'row', gap: 10}}>
+                  <TouchableOpacity 
+                    style={[styles.projectButton, {flex: 1, backgroundColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]}
+                    onPress={() => setIsPresentationMode(true)}
+                  >
+                    <Ionicons name="tv" size={16} color="#ffffff" />
+                    <Text style={styles.projectButtonText}>Presentar en Pantalla Completa</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.projectButton, {backgroundColor: '#334155', paddingHorizontal: 16}]}
+                    onPress={pickDocument}
+                    disabled={isReadingDocument}
+                  >
+                    <Text style={styles.projectButtonText}>Cambiar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </ScrollView>
         );
 
       case 'Messages':
@@ -961,23 +1202,60 @@ export default function VisualDTBApp() {
        return <WebView source={{ uri: projection.content }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} />;
     }
     if (projection.type === 'pdf' || projection.type === 'document') {
-       // Android WebView can't render PDFs natively — use Google Docs Viewer for remote files
        const uri = projection.content;
-       if (Platform.OS === 'android' && (uri.startsWith('http://') || uri.startsWith('https://'))) {
-         const googleDocsUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(uri)}`;
-         return <WebView source={{ uri: googleDocsUrl }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} />;
-       }
-       if (Platform.OS === 'android') {
-         // Local PDF on Android — show message and open externally
+       
+       // Android (or any platform) with base64 data: render via Mozilla PDF.js in WebView
+       if (projection.base64) {
          return (
-           <View style={styles.previewContentCenter}>
-             <Ionicons name="document-text" size={48} color="#94a3b8" />
-             <Text style={{color: '#e2e8f0', marginTop: 10, textAlign: 'center'}}>Este formato (PDF/PPTX local) no se puede visualizar en la app nativamente en Android. Usa "Presentar" (Screen Mirroring) y ábrelo con tu app del sistema.</Text>
-           </View>
+           <WebView 
+             key={uri}
+             source={{ html: getPdfHtml(projection.base64) }} 
+             style={{ flex: 1, backgroundColor: '#0b0f19' }} 
+             javaScriptEnabled={true} 
+             domStorageEnabled={true} 
+             originWhitelist={['*']} 
+             scalesPageToFit={true}
+           />
          );
        }
-       // iOS — WebView handles PDFs and PPTX natively
-       return <WebView source={{ uri }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} allowFileAccessFromFileURLs={true} allowUniversalAccessFromFileURLs={true} allowFileAccess={true} />;
+
+       // Remote HTTP/HTTPS PDF
+       if (uri.startsWith('http://') || uri.startsWith('https://')) {
+         if (Platform.OS === 'android') {
+           const googleDocsUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(uri)}`;
+           return <WebView source={{ uri: googleDocsUrl }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} />;
+         }
+         return <WebView source={{ uri }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} />;
+       }
+
+       // iOS native file URI rendering
+       if (Platform.OS === 'ios') {
+         return (
+           <WebView 
+             source={{ uri }} 
+             style={{ flex: 1, backgroundColor: 'white' }} 
+             javaScriptEnabled={true} 
+             domStorageEnabled={true} 
+             originWhitelist={['*']} 
+             allowFileAccessFromFileURLs={true} 
+             allowUniversalAccessFromFileURLs={true} 
+             allowFileAccess={true} 
+           />
+         );
+       }
+
+       // Android fallback if base64 is missing
+       return (
+         <View style={styles.previewContentCenter}>
+           <Ionicons name="document-text" size={48} color="#94a3b8" />
+           <Text style={{color: '#e2e8f0', marginTop: 10, textAlign: 'center', fontWeight: 'bold'}}>
+             {projection.title || 'Documento cargado'}
+           </Text>
+           <Text style={{color: '#94a3b8', fontSize: 12, marginTop: 4, textAlign: 'center'}}>
+             Selecciona el archivo nuevamente para visualizarlo en pantalla.
+           </Text>
+         </View>
+       );
     }
     return null;
   };
