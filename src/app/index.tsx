@@ -7,13 +7,61 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { WebView } from 'react-native-webview';
 import Slider from '@react-native-community/slider';
-import ExternalDisplay, { useExternalDisplay } from 'react-native-external-display';
+import ExternalDisplay, { useExternalDisplay } from '../utils/safeExternalDisplay';
 import fullBible from '../bible.json';
+
+let NativeVideoView: any = null;
+let useNativeVideoPlayer: any = null;
+try {
+  const expoVideo = require('expo-video');
+  NativeVideoView = expoVideo.VideoView;
+  useNativeVideoPlayer = expoVideo.useVideoPlayer;
+} catch (e) {
+  // Not available in standard Expo Go without native build
+}
+
+const RealVideoPlayer = ({ uri, contentFit, style }: { uri: string; contentFit: 'contain' | 'cover'; style?: any }) => {
+  const player = useNativeVideoPlayer(uri, (p: any) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+
+  return (
+    <NativeVideoView
+      style={style || { width: '100%', height: '100%' }}
+      player={player}
+      contentFit={contentFit}
+      nativeControls={false}
+    />
+  );
+};
+
+const SafeVideoView = ({ 
+  uri, 
+  contentFit = 'contain', 
+  style 
+}: { 
+  uri: string; 
+  contentFit?: 'contain' | 'cover'; 
+  style?: any; 
+}) => {
+  if (NativeVideoView && useNativeVideoPlayer) {
+    return <RealVideoPlayer uri={uri} contentFit={contentFit} style={style} />;
+  }
+
+  return (
+    <View style={[style || { width: '100%', height: '100%' }, { backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }]}>
+      <Ionicons name="videocam" size={48} color="#94a3b8" />
+      <Text style={{ color: '#94a3b8', marginTop: 8, fontSize: 12 }}>Video activo en Development Build</Text>
+    </View>
+  );
+};
 
 type ModuleType = 'Bible' | 'Songs' | 'Media' | 'Documents' | 'Messages' | 'Timer' | 'Web' | 'Settings';
 
 type ProjectionData = {
-  type: 'text' | 'image' | 'video' | 'web' | 'pdf';
+  type: 'text' | 'image' | 'video' | 'web' | 'pdf' | 'document';
   content: string; 
 };
 
@@ -21,16 +69,16 @@ const defaultBackgrounds = [
   {
     id: 'bg1',
     type: 'video',
-    thumbnail: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=300&q=80',
-    uri: 'https://assets.mixkit.co/videos/preview/mixkit-stars-in-space-1610-large.mp4',
-    name: 'Espacio (Video)'
+    thumbnail: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=300&q=80',
+    uri: 'https://vjs.zencdn.net/v/oceans.mp4',
+    name: 'Océano (Video)'
   },
   {
     id: 'bg2',
     type: 'video',
-    thumbnail: 'https://images.unsplash.com/photo-1534081333815-ae5019106622?w=300&q=80',
-    uri: 'https://assets.mixkit.co/videos/preview/mixkit-clouds-and-blue-sky-2408-large.mp4',
-    name: 'Nubes (Video)'
+    thumbnail: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=300&q=80',
+    uri: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4',
+    name: 'Naturaleza (Video)'
   },
   {
     id: 'bg3',
@@ -172,7 +220,7 @@ export default function VisualDTBApp() {
 
   // Timer Effect
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (timerRunning && timeLeft > 0 && !isPaused) {
       interval = setInterval(() => {
         setTimeLeft(prev => {
@@ -283,6 +331,32 @@ export default function VisualDTBApp() {
     setNewSongTitle('');
     setNewSongLyrics('');
     setSelectedSongId(newSong.id);
+  };
+
+  const handleEditSong = (id: string) => {
+    const song = songsList.find(s => s.id === id);
+    if (!song) return;
+    setNewSongTitle(song.title);
+    setNewSongLyrics(song.stanzas.map((s: any) => s.text).join('\n\n'));
+    setSongsList(songsList.filter(s => s.id !== id));
+    setIsAddingSong(true);
+  };
+
+  const handleDeleteSong = (id: string) => {
+    Alert.alert('Eliminar Canción', '¿Estás seguro de que deseas eliminar esta canción?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { 
+        text: 'Eliminar', 
+        style: 'destructive', 
+        onPress: () => {
+          const updated = songsList.filter(s => s.id !== id);
+          setSongsList(updated);
+          if (selectedSongId === id && updated.length > 0) {
+            setSelectedSongId(updated[0].id);
+          }
+        } 
+      }
+    ]);
   };
 
   const renderModuleContent = () => {
@@ -777,25 +851,9 @@ export default function VisualDTBApp() {
     }
     if (projection.type === 'video') {
        const uri = projection.content;
-       const baseUrl = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(0, uri.lastIndexOf('/') + 1) : undefined;
-       const filename = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(uri.lastIndexOf('/') + 1) : uri;
-       const videoHtml = `
-        <style>body { margin: 0; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }</style>
-        <video autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: contain;" src="${filename}"></video>
-       `;
        return (
          <View style={[styles.previewContentCenter, { padding: 0, backgroundColor: 'black' }]}>
-            <WebView 
-              originWhitelist={['*']} 
-              source={baseUrl ? { html: videoHtml, baseUrl } : { html: videoHtml }} 
-              allowsInlineMediaPlayback={true} 
-              mediaPlaybackRequiresUserAction={false} 
-              allowFileAccessFromFileURLs={true} 
-              allowUniversalAccessFromFileURLs={true} 
-              mixedContentMode="always"
-              style={{width: '100%', height: '100%', backgroundColor: 'black'}} 
-              scrollEnabled={false} 
-            />
+            <SafeVideoView key={uri} uri={uri} contentFit="contain" />
          </View>
        );
     }
@@ -835,32 +893,11 @@ export default function VisualDTBApp() {
                 {backgroundMedia && backgroundMedia.type === 'image' && (
                   <Image source={{ uri: backgroundMedia.uri }} style={[StyleSheet.absoluteFill, {width: '100%', height: '100%', resizeMode: 'cover'}]} />
                 )}
-                {backgroundMedia && backgroundMedia.type === 'video' && (() => {
-                  const uri = backgroundMedia.uri;
-                  const baseUrl = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(0, uri.lastIndexOf('/') + 1) : undefined;
-                  const filename = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(uri.lastIndexOf('/') + 1) : uri;
-                  return (
-                    <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black' }]}>
-                      <WebView 
-                        originWhitelist={['*']} 
-                        scrollEnabled={false}
-                        allowsInlineMediaPlayback={true}
-                        mediaPlaybackRequiresUserAction={false}
-                        allowFileAccessFromFileURLs={true}
-                        allowUniversalAccessFromFileURLs={true}
-                        mixedContentMode="always"
-                        source={baseUrl ? { html: `
-                           <style>body { margin: 0; background: black; overflow: hidden; }</style>
-                           <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;" src="${filename}"></video>
-                        `, baseUrl } : { html: `
-                           <style>body { margin: 0; background: black; overflow: hidden; }</style>
-                           <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;" src="${filename}"></video>
-                        ` }} 
-                        style={{flex: 1, backgroundColor: 'black'}} 
-                      />
-                    </View>
-                  );
-                })()}
+                {backgroundMedia && backgroundMedia.type === 'video' && (
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black' }]}>
+                    <SafeVideoView key={backgroundMedia.uri} uri={backgroundMedia.uri} contentFit="cover" />
+                  </View>
+                )}
 
                 {/* Brightness Overlay (Simulated Dimming) */}
                 {brightness < 100 && (
@@ -897,32 +934,11 @@ export default function VisualDTBApp() {
                 {backgroundMedia && backgroundMedia.type === 'image' && (
                   <Image source={{ uri: backgroundMedia.uri }} style={[StyleSheet.absoluteFill, {width: '100%', height: '100%', resizeMode: 'cover'}]} />
                 )}
-                {backgroundMedia && backgroundMedia.type === 'video' && (() => {
-                  const uri = backgroundMedia.uri;
-                  const baseUrl = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(0, uri.lastIndexOf('/') + 1) : undefined;
-                  const filename = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(uri.lastIndexOf('/') + 1) : uri;
-                  return (
-                    <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black' }]}>
-                      <WebView 
-                        originWhitelist={['*']} 
-                        scrollEnabled={false}
-                        allowsInlineMediaPlayback={true}
-                        mediaPlaybackRequiresUserAction={false}
-                        allowFileAccessFromFileURLs={true}
-                        allowUniversalAccessFromFileURLs={true}
-                        mixedContentMode="always"
-                        source={baseUrl ? { html: `
-                           <style>body { margin: 0; background: black; overflow: hidden; }</style>
-                           <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;" src="${filename}"></video>
-                        `, baseUrl } : { html: `
-                           <style>body { margin: 0; background: black; overflow: hidden; }</style>
-                           <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;" src="${filename}"></video>
-                        ` }} 
-                        style={{flex: 1, backgroundColor: 'black'}} 
-                      />
-                    </View>
-                  );
-                })()}
+                {backgroundMedia && backgroundMedia.type === 'video' && (
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black' }]}>
+                    <SafeVideoView key={backgroundMedia.uri} uri={backgroundMedia.uri} contentFit="cover" />
+                  </View>
+                )}
 
                 {/* Brightness Overlay */}
                 {brightness < 100 && (
@@ -950,7 +966,7 @@ export default function VisualDTBApp() {
 
   // Toolbar auto-hide logic for Presentation Mode
   const [showPresentationControls, setShowPresentationControls] = useState(true);
-  const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
+  const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resetControlsTimeout = () => {
     setShowPresentationControls(true);
