@@ -7,17 +7,9 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { WebView } from 'react-native-webview';
 import Slider from '@react-native-community/slider';
-let ExternalDisplay: any = ({ children }: any) => <>{children}</>;
-let useExternalDisplay: any = () => ({});
-try {
-  if (NativeModules.RNExternalDisplay) {
-    const ext = require('react-native-external-display');
-    ExternalDisplay = ext.default;
-    useExternalDisplay = ext.useExternalDisplay;
-  }
-} catch (e) {
-  // Ignored
-}
+import ExternalDisplay, { useExternalDisplay } from 'react-native-external-display';
+import { Video, ResizeMode } from 'expo-av';
+import Pdf from 'react-native-pdf';
 import fullBible from '../bible.json';
 
 type ModuleType = 'Bible' | 'Songs' | 'Media' | 'Documents' | 'Messages' | 'Timer' | 'Web' | 'Settings';
@@ -102,6 +94,7 @@ export default function VisualDTBApp() {
   const [isBlackout, setIsBlackout] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
 
   // Timer State
   const [timerMinutes, setTimerMinutes] = useState<number>(5);
@@ -336,9 +329,9 @@ export default function VisualDTBApp() {
         };
 
         return (
-          <View style={styles.twoColumnLayout}>
+          <View style={[styles.twoColumnLayout, isCompact && { flexDirection: 'column' }]}>
              {/* Columna Izquierda: Buscador y Libros */}
-             <View style={styles.columnLeft}>
+             <View style={[styles.columnLeft, isCompact && { flex: 0.5, borderRightWidth: 0, borderBottomWidth: 1 }]}>
                 <View style={{flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderBottomColor: '#1e293b'}}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {loadedBibles.map(b => (
@@ -424,9 +417,9 @@ export default function VisualDTBApp() {
         const filteredSongs = songsList.filter(s => s.title.toLowerCase().includes(songSearch.toLowerCase()));
 
         return (
-          <View style={styles.twoColumnLayout}>
+          <View style={[styles.twoColumnLayout, isCompact && { flexDirection: 'column' }]}>
              {/* Columna Izquierda: Canciones */}
-             <View style={styles.columnLeft}>
+             <View style={[styles.columnLeft, isCompact && { flex: 0.5, borderRightWidth: 0, borderBottomWidth: 1 }]}>
                 <View style={styles.searchBar}>
                   <Ionicons name="search" size={16} color="#94a3b8" />
                   <TextInput 
@@ -686,6 +679,45 @@ export default function VisualDTBApp() {
         );
 
       case 'Web':
+        // When projecting, show interactive WebView in the controls area
+        if (projection.type === 'web') {
+          return (
+            <View style={{flex: 1}}>
+              <View style={{flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e293b', padding: 10, borderBottomWidth: 1, borderBottomColor: '#334155'}}>
+                <Ionicons name="globe" size={16} color="#10b981" style={{marginRight: 6}}/>
+                <TextInput 
+                  style={[styles.urlText, {flex: 1, marginRight: 8}]}
+                  value={webUrl}
+                  onChangeText={setWebUrl}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onSubmitEditing={() => setProjection({ type: 'web', content: webUrl })}
+                />
+                <TouchableOpacity style={{backgroundColor: '#3b82f6', padding: 8, borderRadius: 6, marginRight: 6}} onPress={() => setProjection({ type: 'web', content: webUrl })}>
+                  <Ionicons name="arrow-forward" size={16} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={{backgroundColor: '#ef4444', padding: 8, borderRadius: 6}} onPress={() => setProjection({ type: 'text', content: '' })}>
+                  <Ionicons name="close" size={16} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              <WebView 
+                source={{ uri: projection.content }} 
+                style={{ flex: 1 }} 
+                javaScriptEnabled={true} 
+                domStorageEnabled={true} 
+                originWhitelist={['*']} 
+                scalesPageToFit={true}
+                onNavigationStateChange={(navState) => {
+                  if (navState.url && navState.url !== projection.content && navState.url.startsWith('http')) {
+                    setWebUrl(navState.url);
+                    setProjection({ type: 'web', content: navState.url });
+                  }
+                }}
+              />
+            </View>
+          );
+        }
         return (
           <ScrollView style={styles.moduleContentSingle}>
              <Text style={styles.mockTitle}>Navegador Integrado</Text>
@@ -727,6 +759,9 @@ export default function VisualDTBApp() {
     }
   };
 
+  // =============================================
+  // LOCAL PREVIEW - full features, runs on device screen
+  // =============================================
   const renderPreviewContent = () => {
     if (projection.type === 'text') {
        return (
@@ -744,31 +779,51 @@ export default function VisualDTBApp() {
     }
     if (projection.type === 'video') {
        const uri = projection.content;
-       const baseUrl = uri.substring(0, uri.lastIndexOf('/') + 1);
-       const fileName = uri.substring(uri.lastIndexOf('/') + 1);
-       
-       const videoHtml = `
-        <style>body { margin: 0; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }</style>
-        <video autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: contain;" src="${fileName}"></video>
-       `;
        return (
-         <View style={[styles.previewContentCenter, { padding: 0 }]}>
-            <WebView 
-              originWhitelist={['*']} 
-              source={{ html: videoHtml, baseUrl: baseUrl }} 
-              allowsInlineMediaPlayback={true} 
-              mediaPlaybackRequiresUserAction={false} 
-              allowFileAccessFromFileURLs={true} 
-              allowUniversalAccessFromFileURLs={true} 
-              style={{width: '100%', height: '100%', backgroundColor: 'black'}} 
-              scrollEnabled={false} 
+         <View style={[styles.previewContentCenter, { padding: 0, backgroundColor: 'black' }]}>
+            <Video
+              source={{ uri }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode={ResizeMode.CONTAIN}
+              shouldPlay
+              isLooping
+              isMuted
             />
          </View>
        );
     }
-    if (projection.type === 'web' || projection.type === 'pdf' || projection.type === 'document') {
-       // Allow webview to render PDFs and Office documents natively on iOS and Web URLs.
-       return <WebView source={{ uri: projection.content }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} allowFileAccessFromFileURLs={true} allowUniversalAccessFromFileURLs={true} allowFileAccess={true} />
+    if (projection.type === 'web') {
+       return <WebView source={{ uri: projection.content }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} />;
+    }
+    if (projection.type === 'pdf' || projection.type === 'document') {
+       // Android WebView can't render PDFs natively — use Google Docs Viewer for remote files
+       const uri = projection.content;
+       if (Platform.OS === 'android' && (uri.startsWith('http://') || uri.startsWith('https://'))) {
+         const googleDocsUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(uri)}`;
+         return <WebView source={{ uri: googleDocsUrl }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} />;
+       }
+       if (Platform.OS === 'android') {
+         // Local PDF on Android — use react-native-pdf
+         if (uri.toLowerCase().endsWith('.pdf')) {
+            return (
+              <Pdf
+                source={{ uri, cache: true }}
+                style={{ flex: 1, backgroundColor: 'white' }}
+                fitPolicy={0}
+              />
+            );
+         } else {
+            // Android fallback for PPTX/DOCX
+            return (
+              <View style={styles.previewContentCenter}>
+                <Ionicons name="document-text" size={48} color="#94a3b8" />
+                <Text style={{color: '#e2e8f0', marginTop: 10, textAlign: 'center'}}>Este formato no se puede previsualizar en Android nativamente. Usa "Presentar" (Screen Mirroring) y ábrelo con tu app del sistema.</Text>
+              </View>
+            );
+         }
+       }
+       // iOS — WebView handles PDFs and PPTX natively
+       return <WebView source={{ uri }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} allowFileAccessFromFileURLs={true} allowUniversalAccessFromFileURLs={true} allowFileAccess={true} />;
     }
     return null;
   };
@@ -782,28 +837,19 @@ export default function VisualDTBApp() {
               <>
                 {/* Background Media */}
                 {backgroundMedia && backgroundMedia.type === 'image' && (
-                  <Image source={{ uri: backgroundMedia.uri }} style={[StyleSheet.absoluteFill, {width: '100%', height: '100%', resizeMode: 'cover', zIndex: -1}]} />
+                  <Image source={{ uri: backgroundMedia.uri }} style={[StyleSheet.absoluteFill, {width: '100%', height: '100%', resizeMode: 'cover'}]} />
                 )}
                 {backgroundMedia && backgroundMedia.type === 'video' && (() => {
                   const uri = backgroundMedia.uri;
-                  const baseUrl = uri.substring(0, uri.lastIndexOf('/') + 1);
-                  const fileName = uri.substring(uri.lastIndexOf('/') + 1);
                   return (
-                    <View style={[StyleSheet.absoluteFill, {zIndex: -1}]}>
-                      <WebView 
-                        originWhitelist={['*']} 
-                        scrollEnabled={false}
-                        allowsInlineMediaPlayback={true}
-                        mediaPlaybackRequiresUserAction={false}
-                        allowFileAccessFromFileURLs={true}
-                        allowUniversalAccessFromFileURLs={true}
-                        source={{ html: `
-                           <style>body { margin: 0; background: black; overflow: hidden; }</style>
-                           <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;">
-                             <source src="${fileName}" type="video/mp4">
-                           </video>
-                        `, baseUrl: baseUrl }} 
-                        style={{flex: 1, backgroundColor: 'black'}} 
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black' }]}>
+                      <Video
+                        source={{ uri }}
+                        style={{ width: '100%', height: '100%' }}
+                        resizeMode={ResizeMode.COVER}
+                        shouldPlay
+                        isLooping
+                        isMuted
                       />
                     </View>
                   );
@@ -828,6 +874,136 @@ export default function VisualDTBApp() {
         </View>
      );
   };
+
+  // =============================================
+  // EXTERNAL DISPLAY - ultra-lightweight to prevent UI freeze
+  // NO adjustsFontSizeToFit, NO WebView backgrounds, NO animations
+  // =============================================
+  const renderExternalScreen = () => {
+     return (
+        <View style={{flex: 1, backgroundColor: 'black'}}>
+           {isBlackout ? (
+              <View style={{flex: 1, backgroundColor: 'black'}} />
+           ) : (
+              <>
+                {/* Background Media */}
+                {backgroundMedia && backgroundMedia.type === 'image' && (
+                  <Image source={{ uri: backgroundMedia.uri }} style={[StyleSheet.absoluteFill, {width: '100%', height: '100%', resizeMode: 'cover'}]} />
+                )}
+                {backgroundMedia && backgroundMedia.type === 'video' && (() => {
+                  const uri = backgroundMedia.uri;
+                  return (
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black' }]}>
+                      <Video
+                        source={{ uri }}
+                        style={{ width: '100%', height: '100%' }}
+                        resizeMode={ResizeMode.COVER}
+                        shouldPlay
+                        isLooping
+                        isMuted
+                      />
+                    </View>
+                  );
+                })()}
+
+                {/* Brightness Overlay */}
+                {brightness < 100 && (
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black', opacity: 1 - (brightness / 100), pointerEvents: 'none', zIndex: 40 }]} />
+                )}
+                
+                {/* Content - lightweight text rendering for text, standard for others */}
+                {projection.type === 'text' ? (
+                  <View style={styles.previewContentCenter}>
+                    <Text style={[styles.previewText, { fontSize: textSize, width: '100%' }]} numberOfLines={25}>{projection.content}</Text>
+                  </View>
+                ) : renderPreviewContent()}
+
+                {/* Marquee - simple, no animation on external (static banner) */}
+                {activeMarquee !== '' && (
+                  <View style={styles.marqueeContainer}>
+                    <Text style={styles.marqueeText} numberOfLines={1}>{activeMarquee}</Text>
+                  </View>
+                )}
+              </>
+           )}
+        </View>
+     );
+  };
+
+  // Toolbar auto-hide logic for Presentation Mode
+  const [showPresentationControls, setShowPresentationControls] = useState(true);
+  const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const resetControlsTimeout = () => {
+    setShowPresentationControls(true);
+    if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+    controlsTimeout.current = setTimeout(() => {
+      setShowPresentationControls(false);
+    }, 3000);
+  };
+
+  useEffect(() => {
+    if (isPresentationMode) {
+      resetControlsTimeout();
+    }
+    return () => {
+      if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+    };
+  }, [isPresentationMode]);
+
+  // --- PRESENTATION MODE ---
+  // When active, show ONLY the projection fullscreen (for wireless mirroring)
+  if (isPresentationMode) {
+    return (
+      <View style={{flex: 1, backgroundColor: '#000'}} onTouchStart={resetControlsTimeout}>
+        {renderProjectionScreen()}
+
+        {/* Floating toolbar at bottom (Auto-hiding) */}
+        {showPresentationControls && (
+          <View style={{
+            position: 'absolute', bottom: 20, left: 0, right: 0,
+            flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+            gap: 8, zIndex: 100,
+          }}>
+            {/* Playlist nav */}
+            {playlist && (
+              <>
+                <TouchableOpacity
+                  style={{backgroundColor: 'rgba(59,130,246,0.8)', padding: 10, borderRadius: 25}}
+                  onPress={() => { handlePrevSlide(); resetControlsTimeout(); }}
+                >
+                  <Ionicons name="chevron-up" size={22} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{backgroundColor: 'rgba(59,130,246,0.8)', padding: 10, borderRadius: 25}}
+                  onPress={() => { handleNextSlide(); resetControlsTimeout(); }}
+                >
+                  <Ionicons name="chevron-down" size={22} color="#fff" />
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Blackout */}
+            <TouchableOpacity
+              style={{backgroundColor: isBlackout ? 'rgba(239,68,68,0.9)' : 'rgba(100,100,100,0.6)', padding: 10, borderRadius: 25}}
+              onPress={() => { setIsBlackout(!isBlackout); resetControlsTimeout(); }}
+            >
+              <Ionicons name="eye-off" size={22} color="#fff" />
+            </TouchableOpacity>
+
+            {/* Exit Presentation Mode */}
+            <TouchableOpacity
+              style={{backgroundColor: 'rgba(239,68,68,0.9)', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 25, flexDirection: 'row', alignItems: 'center', gap: 6}}
+              onPress={() => setIsPresentationMode(false)}
+            >
+              <Ionicons name="close" size={20} color="#fff" />
+              <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 13}}>Salir</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
+  }
 
   return (
     <>
@@ -868,6 +1044,14 @@ export default function VisualDTBApp() {
         <View style={styles.topBar}>
           <Text style={styles.topBarTitle}>VisualDTB — {activeModule}</Text>
           <View style={styles.topBarControls}>
+            {/* Presentation Mode Button */}
+            <TouchableOpacity
+              style={{flexDirection: 'row', alignItems: 'center', backgroundColor: '#8b5cf6', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, gap: 6}}
+              onPress={() => setIsPresentationMode(true)}
+            >
+              <Ionicons name="tv" size={16} color="#fff" />
+              <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 13}}>Presentar</Text>
+            </TouchableOpacity>
             <View style={styles.tvStatusBadge}>
               <Ionicons name="tv-outline" size={16} color="#94a3b8" />
               <Text style={styles.tvStatusText}>Preview Mode</Text>
@@ -979,13 +1163,15 @@ export default function VisualDTBApp() {
       </SafeAreaView>
       
       {hasExternalDisplay && externalDisplayEnabled && (
-        <ExternalDisplay
-          mainScreenStyle={{ flex: 1 }}
-          fallbackInMainScreen={false}
-          screen={Object.keys(externalScreens)[0]}
-        >
-          {renderProjectionScreen()}
-        </ExternalDisplay>
+        <View style={{ position: 'absolute', top: -1000, left: -1000, width: 1, height: 1, overflow: 'hidden' }} pointerEvents="none">
+          <ExternalDisplay
+            mainScreenStyle={{ flex: 1 }}
+            fallbackInMainScreen={false}
+            screen={Object.keys(externalScreens)[0]}
+          >
+            {renderExternalScreen()}
+          </ExternalDisplay>
+        </View>
       )}
     </>
   );
