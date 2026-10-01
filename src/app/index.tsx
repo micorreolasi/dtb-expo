@@ -8,8 +8,6 @@ import * as FileSystem from 'expo-file-system';
 import { WebView } from 'react-native-webview';
 import Slider from '@react-native-community/slider';
 import ExternalDisplay, { useExternalDisplay } from 'react-native-external-display';
-import { Video, ResizeMode } from 'expo-av';
-import Pdf from 'react-native-pdf';
 import fullBible from '../bible.json';
 
 type ModuleType = 'Bible' | 'Songs' | 'Media' | 'Documents' | 'Messages' | 'Timer' | 'Web' | 'Settings';
@@ -779,15 +777,24 @@ export default function VisualDTBApp() {
     }
     if (projection.type === 'video') {
        const uri = projection.content;
+       const baseUrl = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(0, uri.lastIndexOf('/') + 1) : undefined;
+       const filename = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(uri.lastIndexOf('/') + 1) : uri;
+       const videoHtml = `
+        <style>body { margin: 0; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }</style>
+        <video autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: contain;" src="${filename}"></video>
+       `;
        return (
          <View style={[styles.previewContentCenter, { padding: 0, backgroundColor: 'black' }]}>
-            <Video
-              source={{ uri }}
-              style={{ width: '100%', height: '100%' }}
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay
-              isLooping
-              isMuted
+            <WebView 
+              originWhitelist={['*']} 
+              source={baseUrl ? { html: videoHtml, baseUrl } : { html: videoHtml }} 
+              allowsInlineMediaPlayback={true} 
+              mediaPlaybackRequiresUserAction={false} 
+              allowFileAccessFromFileURLs={true} 
+              allowUniversalAccessFromFileURLs={true} 
+              mixedContentMode="always"
+              style={{width: '100%', height: '100%', backgroundColor: 'black'}} 
+              scrollEnabled={false} 
             />
          </View>
        );
@@ -803,24 +810,13 @@ export default function VisualDTBApp() {
          return <WebView source={{ uri: googleDocsUrl }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} />;
        }
        if (Platform.OS === 'android') {
-         // Local PDF on Android — use react-native-pdf
-         if (uri.toLowerCase().endsWith('.pdf')) {
-            return (
-              <Pdf
-                source={{ uri, cache: true }}
-                style={{ flex: 1, backgroundColor: 'white' }}
-                fitPolicy={0}
-              />
-            );
-         } else {
-            // Android fallback for PPTX/DOCX
-            return (
-              <View style={styles.previewContentCenter}>
-                <Ionicons name="document-text" size={48} color="#94a3b8" />
-                <Text style={{color: '#e2e8f0', marginTop: 10, textAlign: 'center'}}>Este formato no se puede previsualizar en Android nativamente. Usa "Presentar" (Screen Mirroring) y ábrelo con tu app del sistema.</Text>
-              </View>
-            );
-         }
+         // Local PDF on Android — show message and open externally
+         return (
+           <View style={styles.previewContentCenter}>
+             <Ionicons name="document-text" size={48} color="#94a3b8" />
+             <Text style={{color: '#e2e8f0', marginTop: 10, textAlign: 'center'}}>Este formato (PDF/PPTX local) no se puede visualizar en la app nativamente en Android. Usa "Presentar" (Screen Mirroring) y ábrelo con tu app del sistema.</Text>
+           </View>
+         );
        }
        // iOS — WebView handles PDFs and PPTX natively
        return <WebView source={{ uri }} style={{ flex: 1, backgroundColor: 'white' }} javaScriptEnabled={true} domStorageEnabled={true} originWhitelist={['*']} allowFileAccessFromFileURLs={true} allowUniversalAccessFromFileURLs={true} allowFileAccess={true} />;
@@ -841,15 +837,26 @@ export default function VisualDTBApp() {
                 )}
                 {backgroundMedia && backgroundMedia.type === 'video' && (() => {
                   const uri = backgroundMedia.uri;
+                  const baseUrl = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(0, uri.lastIndexOf('/') + 1) : undefined;
+                  const filename = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(uri.lastIndexOf('/') + 1) : uri;
                   return (
                     <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black' }]}>
-                      <Video
-                        source={{ uri }}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode={ResizeMode.COVER}
-                        shouldPlay
-                        isLooping
-                        isMuted
+                      <WebView 
+                        originWhitelist={['*']} 
+                        scrollEnabled={false}
+                        allowsInlineMediaPlayback={true}
+                        mediaPlaybackRequiresUserAction={false}
+                        allowFileAccessFromFileURLs={true}
+                        allowUniversalAccessFromFileURLs={true}
+                        mixedContentMode="always"
+                        source={baseUrl ? { html: `
+                           <style>body { margin: 0; background: black; overflow: hidden; }</style>
+                           <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;" src="${filename}"></video>
+                        `, baseUrl } : { html: `
+                           <style>body { margin: 0; background: black; overflow: hidden; }</style>
+                           <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;" src="${filename}"></video>
+                        ` }} 
+                        style={{flex: 1, backgroundColor: 'black'}} 
                       />
                     </View>
                   );
@@ -892,15 +899,26 @@ export default function VisualDTBApp() {
                 )}
                 {backgroundMedia && backgroundMedia.type === 'video' && (() => {
                   const uri = backgroundMedia.uri;
+                  const baseUrl = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(0, uri.lastIndexOf('/') + 1) : undefined;
+                  const filename = Platform.OS === 'android' && uri.startsWith('file://') ? uri.substring(uri.lastIndexOf('/') + 1) : uri;
                   return (
                     <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black' }]}>
-                      <Video
-                        source={{ uri }}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode={ResizeMode.COVER}
-                        shouldPlay
-                        isLooping
-                        isMuted
+                      <WebView 
+                        originWhitelist={['*']} 
+                        scrollEnabled={false}
+                        allowsInlineMediaPlayback={true}
+                        mediaPlaybackRequiresUserAction={false}
+                        allowFileAccessFromFileURLs={true}
+                        allowUniversalAccessFromFileURLs={true}
+                        mixedContentMode="always"
+                        source={baseUrl ? { html: `
+                           <style>body { margin: 0; background: black; overflow: hidden; }</style>
+                           <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;" src="${filename}"></video>
+                        `, baseUrl } : { html: `
+                           <style>body { margin: 0; background: black; overflow: hidden; }</style>
+                           <video autoplay loop muted playsinline style="width: 100vw; height: 100vh; object-fit: cover;" src="${filename}"></video>
+                        ` }} 
+                        style={{flex: 1, backgroundColor: 'black'}} 
                       />
                     </View>
                   );
