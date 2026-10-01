@@ -4,7 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
+import { File as ExpoFile } from 'expo-file-system';
 import { WebView } from 'react-native-webview';
 import Slider from '@react-native-community/slider';
 import ExternalDisplay, { useExternalDisplay } from '../utils/safeExternalDisplay';
@@ -190,6 +191,36 @@ const getPdfHtml = (base64: string) => `
 </body>
 </html>
 `;
+
+const readFileAsBase64 = async (uri: string): Promise<string> => {
+  try {
+    const file = new ExpoFile(uri);
+    if (typeof (file as any).base64 === 'function') {
+      const b64 = await (file as any).base64();
+      if (b64) return b64;
+    }
+  } catch (e) {
+    // Fallback to legacy API
+  }
+
+  return await FileSystemLegacy.readAsStringAsync(uri, {
+    encoding: FileSystemLegacy.EncodingType.Base64,
+  });
+};
+
+const readFileAsText = async (uri: string): Promise<string> => {
+  try {
+    const file = new ExpoFile(uri);
+    if (typeof (file as any).text === 'function') {
+      const txt = await (file as any).text();
+      if (txt) return txt;
+    }
+  } catch (e) {
+    // Fallback to legacy API
+  }
+
+  return await FileSystemLegacy.readAsStringAsync(uri);
+};
 
 const defaultBackgrounds = [
   {
@@ -433,9 +464,7 @@ export default function VisualDTBApp() {
         // Read file as base64 for Android PDF.js rendering
         let base64Data: string | undefined = undefined;
         try {
-          base64Data = await FileSystem.readAsStringAsync(uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
+          base64Data = await readFileAsBase64(uri);
         } catch (readErr) {
           console.warn('Could not read file as base64:', readErr);
         }
@@ -560,7 +589,7 @@ export default function VisualDTBApp() {
                    Alert.alert('Error', 'El archivo debe ser un JSON.');
                    return;
                 }
-                const fileStr = await FileSystem.readAsStringAsync(fileUri);
+                const fileStr = await readFileAsText(fileUri);
                 const parsedBible = JSON.parse(fileStr);
                 if (Array.isArray(parsedBible) && parsedBible[0] && parsedBible[0].name && Array.isArray(parsedBible[0].chapters)) {
                    const newId = 'bible-' + Date.now();
