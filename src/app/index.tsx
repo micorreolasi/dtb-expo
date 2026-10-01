@@ -273,7 +273,7 @@ export default function VisualDTBApp() {
     return `${m}:${s}`;
   };
 
-  const navItems: { id: ModuleType, icon: keyof typeof Ionicons.glyphMap, label: string }[] = [
+  const allNavItems: { id: ModuleType, icon: keyof typeof Ionicons.glyphMap, label: string }[] = [
     { id: 'Bible', icon: 'book', label: 'Biblia' },
     { id: 'Songs', icon: 'musical-notes', label: 'Canciones' },
     { id: 'Media', icon: 'images', label: 'Medios' },
@@ -283,6 +283,8 @@ export default function VisualDTBApp() {
     { id: 'Web', icon: 'globe', label: 'Web' },
     { id: 'Settings', icon: 'settings', label: 'Ajustes' },
   ];
+
+  const navItems = allNavItems.filter(item => item.id !== 'Documents' || Platform.OS === 'ios');
 
   const pickMedia = async () => {
     if (isPickingDocRef.current) return;
@@ -860,6 +862,7 @@ export default function VisualDTBApp() {
         );
 
       case 'Documents':
+        if (Platform.OS !== 'ios') return null;
         const hasDoc = projection.type === 'document' || projection.type === 'pdf';
         return (
           <ScrollView style={styles.moduleContentSingle}>
@@ -887,7 +890,7 @@ export default function VisualDTBApp() {
                 {isReadingDocument ? 'Abriendo archivo...' : 'Seleccionar Archivo (PDF, PPTX, Word, etc.)'}
               </Text>
               <Text style={{color: '#94a3b8', fontSize: 12, marginTop: 4}}>
-                {Platform.OS === 'ios' ? 'Visualización integrada nativa en iPad' : 'Abre con tu app de PDF favorita en Android para proyectar'}
+                Visualización integrada nativa en iPad
               </Text>
             </TouchableOpacity>
 
@@ -908,27 +911,13 @@ export default function VisualDTBApp() {
                 </View>
 
                 <View style={{flexDirection: 'row', gap: 10}}>
-                  {Platform.OS === 'android' ? (
-                    <TouchableOpacity 
-                      style={[styles.projectButton, {flex: 1, backgroundColor: '#10b981', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]}
-                      onPress={async () => {
-                        try {
-                          await Sharing.shareAsync(projection.content, { dialogTitle: 'Abrir visor de PDF' });
-                        } catch (e) {}
-                      }}
-                    >
-                      <Ionicons name="open-outline" size={16} color="#ffffff" />
-                      <Text style={styles.projectButtonText}>Abrir en App de PDF</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity 
-                      style={[styles.projectButton, {flex: 1, backgroundColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]}
-                      onPress={() => setIsPresentationMode(true)}
-                    >
-                      <Ionicons name="tv" size={16} color="#ffffff" />
-                      <Text style={styles.projectButtonText}>Presentar en Pantalla Completa</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity 
+                    style={[styles.projectButton, {flex: 1, backgroundColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]}
+                    onPress={() => setIsPresentationMode(true)}
+                  >
+                    <Ionicons name="tv" size={16} color="#ffffff" />
+                    <Text style={styles.projectButtonText}>Presentar en Pantalla Completa</Text>
+                  </TouchableOpacity>
 
                   <TouchableOpacity 
                     style={[styles.projectButton, {backgroundColor: '#334155', paddingHorizontal: 16}]}
