@@ -439,7 +439,7 @@ export default function VisualDTBApp() {
   const [messageInput, setMessageInput] = useState<string>('');
   const [messageReps, setMessageReps] = useState<string>('3');
   const [activeMarquee, setActiveMarquee] = useState<string>('');
-  const [marqueeSpeed, setMarqueeSpeed] = useState<'lento' | 'normal' | 'rapido'>('normal');
+  const [marqueeSpeed, setMarqueeSpeed] = useState<'muy_lento' | 'lento' | 'normal' | 'rapido'>('normal');
   const [marqueeContainerWidth, setMarqueeContainerWidth] = useState<number>(360);
   const scrollX = useRef(new Animated.Value(360)).current;
   const scrollExtX = useRef(new Animated.Value(1400)).current;
@@ -649,9 +649,10 @@ export default function VisualDTBApp() {
     let count = 0;
 
     const getDuration = () => {
-      if (marqueeSpeed === 'rapido') return 4500;
-      if (marqueeSpeed === 'lento') return 13000;
-      return 7500;
+      if (marqueeSpeed === 'rapido') return 5000;
+      if (marqueeSpeed === 'normal') return 9000;
+      if (marqueeSpeed === 'lento') return 16000;
+      return 26000; // 'muy_lento'
     };
     
     const animate = () => {
@@ -1261,11 +1262,12 @@ export default function VisualDTBApp() {
             {/* Selector de Velocidad */}
             <View style={{marginBottom: 14}}>
               <Text style={{color: '#94a3b8', fontSize: 12, marginBottom: 6, fontWeight: 'bold'}}>Velocidad del Cintillo:</Text>
-              <View style={{flexDirection: 'row', gap: 6}}>
+              <View style={{flexDirection: 'row', gap: isCompact ? 4 : 6}}>
                 {[
-                  { id: 'lento', label: '🐢 Lento' },
-                  { id: 'normal', label: '🚶 Normal' },
-                  { id: 'rapido', label: '⚡ Rápido' }
+                  { id: 'muy_lento', label: 'Muy Lento' },
+                  { id: 'lento', label: 'Lento' },
+                  { id: 'normal', label: 'Normal' },
+                  { id: 'rapido', label: 'Rápido' }
                 ].map(s => {
                   const isSelected = marqueeSpeed === s.id;
                   return (
@@ -1273,19 +1275,22 @@ export default function VisualDTBApp() {
                       key={s.id}
                       style={{
                         flex: 1,
-                        paddingVertical: isCompact ? 8 : 10,
+                        paddingVertical: isCompact ? 7 : 10,
+                        paddingHorizontal: 2,
                         borderRadius: 8,
                         backgroundColor: isSelected ? '#3b82f6' : '#1e293b',
                         borderWidth: 1,
                         borderColor: isSelected ? '#60a5fa' : '#334155',
-                        alignItems: 'center'
+                        alignItems: 'center',
+                        justifyContent: 'center'
                       }}
                       onPress={() => setMarqueeSpeed(s.id as any)}
                     >
                       <Text style={{
                         color: isSelected ? '#ffffff' : '#94a3b8',
                         fontWeight: 'bold',
-                        fontSize: isCompact ? 11 : 13
+                        fontSize: isCompact ? 10 : 12,
+                        textAlign: 'center'
                       }}>
                         {s.label}
                       </Text>
