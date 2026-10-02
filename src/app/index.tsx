@@ -22,19 +22,55 @@ try {
   // Not available in standard Expo Go without native build
 }
 
-const RealVideoPlayer = ({ uri, contentFit, style }: { uri: string; contentFit: 'contain' | 'cover'; style?: any }) => {
+const RealVideoPlayer = ({ 
+  uri, 
+  contentFit, 
+  style, 
+  muted = false, 
+  loop = true, 
+  volume = 1.0, 
+  nativeControls = false,
+  isPaused = false,
+}: { 
+  uri: string; 
+  contentFit: 'contain' | 'cover'; 
+  style?: any; 
+  muted?: boolean; 
+  loop?: boolean; 
+  volume?: number; 
+  nativeControls?: boolean; 
+  isPaused?: boolean;
+}) => {
   const player = useNativeVideoPlayer(uri, (p: any) => {
-    p.loop = true;
-    p.muted = true;
-    p.play();
+    p.loop = loop;
+    p.muted = muted;
+    p.volume = volume;
+    if (isPaused) {
+      p.pause();
+    } else {
+      p.play();
+    }
   });
+
+  useEffect(() => {
+    if (player) {
+      player.muted = muted;
+      player.volume = volume;
+      player.loop = loop;
+      if (isPaused) {
+        player.pause();
+      } else {
+        player.play();
+      }
+    }
+  }, [player, muted, volume, loop, isPaused]);
 
   return (
     <NativeVideoView
       style={style || { width: '100%', height: '100%' }}
       player={player}
       contentFit={contentFit}
-      nativeControls={false}
+      nativeControls={nativeControls}
     />
   );
 };
@@ -42,14 +78,35 @@ const RealVideoPlayer = ({ uri, contentFit, style }: { uri: string; contentFit: 
 const SafeVideoView = ({ 
   uri, 
   contentFit = 'contain', 
-  style 
+  style,
+  muted = false,
+  loop = true,
+  volume = 1.0,
+  nativeControls = false,
+  isPaused = false,
 }: { 
   uri: string; 
   contentFit?: 'contain' | 'cover'; 
   style?: any; 
+  muted?: boolean;
+  loop?: boolean;
+  volume?: number;
+  nativeControls?: boolean;
+  isPaused?: boolean;
 }) => {
   if (NativeVideoView && useNativeVideoPlayer) {
-    return <RealVideoPlayer uri={uri} contentFit={contentFit} style={style} />;
+    return (
+      <RealVideoPlayer 
+        uri={uri} 
+        contentFit={contentFit} 
+        style={style} 
+        muted={muted} 
+        loop={loop} 
+        volume={volume} 
+        nativeControls={nativeControls} 
+        isPaused={isPaused}
+      />
+    );
   }
 
   return (
@@ -1099,75 +1156,121 @@ export default function VisualDTBApp() {
                </TouchableOpacity>
             </View>
             <View style={styles.gridContainer}>
-                 <TouchableOpacity style={[styles.gridBox, {width: 140, height: 140, backgroundColor: '#3b82f620', borderColor: '#3b82f6', borderWidth: 2, borderStyle: 'dashed'}]} onPress={pickMedia}>
-                   <Ionicons name="cloud-upload" size={32} color="#3b82f6" />
-                   <Text style={{color: '#3b82f6', marginTop: 10, fontWeight: 'bold', textAlign: 'center', paddingHorizontal: 10}}>Archivo Local del iPad</Text>
+                 <TouchableOpacity style={[styles.gridBox, {width: isCompact ? 110 : 140, height: isCompact ? 110 : 140, backgroundColor: '#3b82f620', borderColor: '#3b82f6', borderWidth: 2, borderStyle: 'dashed'}]} onPress={pickMedia}>
+                   <Ionicons name="cloud-upload" size={28} color="#3b82f6" />
+                   <Text style={{color: '#3b82f6', marginTop: 8, fontWeight: 'bold', fontSize: isCompact ? 11 : 13, textAlign: 'center', paddingHorizontal: 6}}>Subir Imagen o Video</Text>
                  </TouchableOpacity>
 
-                 {customBackgrounds.map(bg => (
-                    <TouchableOpacity 
-                      key={bg.id} 
-                      style={[styles.gridBox, {width: 140, height: 140, overflow: 'hidden', borderWidth: 1, borderColor: '#334155'}]} 
-                      onPress={() => {
-                        setMediaPreviewUri(bg.uri);
-                        setMediaPreviewType(bg.type as 'image'|'video');
-                      }}>
-                      <Image source={{uri: bg.thumbnail}} style={{width: '100%', height: '100%', resizeMode: 'cover'}} />
-                      <View style={{position: 'absolute', bottom: 5, left: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.7)', padding: 4, borderRadius: 4}}>
-                         <Text style={{color: 'white', fontSize: 10, textAlign: 'center', fontWeight: 'bold'}}>{bg.name}</Text>
-                      </View>
+                 {customBackgrounds.map(bg => {
+                    const isCurrentBg = backgroundMedia?.uri === bg.uri;
+                    return (
                       <TouchableOpacity 
-                        style={{position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 15, zIndex: 10}}
-                        onPress={(e) => {
-                           e.stopPropagation();
-                           Alert.alert('Eliminar', '¿Deseas quitar este fondo?', [
-                             { text: 'Cancelar', style: 'cancel' },
-                             { text: 'Eliminar', style: 'destructive', onPress: () => {
-                                setCustomBackgrounds(prev => prev.filter(item => item.id !== bg.id));
-                             }}
-                           ]);
-                        }}
-                      >
-                         <Ionicons name="ellipsis-vertical" size={14} color="white" />
+                        key={bg.id} 
+                        style={[
+                          styles.gridBox, 
+                          {
+                            width: isCompact ? 110 : 140, 
+                            height: isCompact ? 110 : 140, 
+                            overflow: 'hidden', 
+                            borderWidth: isCurrentBg ? 2 : 1, 
+                            borderColor: isCurrentBg ? '#10b981' : '#334155'
+                          }
+                        ]} 
+                        onPress={() => {
+                          // AUTOMÁTICAMENTE AL TOCARLO SE VA COMO FONDO
+                          setBackgroundMedia({ type: bg.type as 'image'|'video', uri: bg.uri });
+                          setMediaPreviewUri(bg.uri);
+                          setMediaPreviewType(bg.type as 'image'|'video');
+                        }}>
+                        <Image source={{uri: bg.thumbnail}} style={{width: '100%', height: '100%', resizeMode: 'cover'}} />
+                        
+                        {/* Indicador de Fondo Activo */}
+                        {isCurrentBg && (
+                          <View style={{position: 'absolute', top: 5, left: 5, backgroundColor: '#10b981', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, flexDirection: 'row', alignItems: 'center', gap: 3}}>
+                            <Ionicons name="checkmark-circle" size={11} color="white" />
+                            <Text style={{color: 'white', fontSize: 9, fontWeight: 'bold'}}>Fondo</Text>
+                          </View>
+                        )}
+
+                        <View style={{position: 'absolute', bottom: 5, left: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.7)', padding: 4, borderRadius: 4}}>
+                           <Text style={{color: 'white', fontSize: 10, textAlign: 'center', fontWeight: 'bold'}} numberOfLines={1}>{bg.name}</Text>
+                        </View>
+                        <TouchableOpacity 
+                          style={{position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 15, zIndex: 10}}
+                          onPress={(e) => {
+                             e.stopPropagation();
+                             Alert.alert('Eliminar', '¿Deseas quitar este fondo?', [
+                               { text: 'Cancelar', style: 'cancel' },
+                               { text: 'Eliminar', style: 'destructive', onPress: () => {
+                                  if (backgroundMedia?.uri === bg.uri) {
+                                    setBackgroundMedia(null);
+                                  }
+                                  setCustomBackgrounds(prev => prev.filter(item => item.id !== bg.id));
+                                  if (mediaPreviewUri === bg.uri) {
+                                    setMediaPreviewUri(null);
+                                  }
+                               }}
+                             ]);
+                          }}
+                        >
+                           <Ionicons name="ellipsis-vertical" size={14} color="white" />
+                        </TouchableOpacity>
                       </TouchableOpacity>
-                    </TouchableOpacity>
-                 ))}
+                    );
+                 })}
             </View>
             
             {mediaPreviewUri && (
-               <View style={{marginTop: 20}}>
-                  <Text style={{color: '#e2e8f0', marginBottom: 10}}>Archivo seleccionado listo:</Text>
+               <View style={{marginTop: 18, backgroundColor: '#1e293b', padding: 14, borderRadius: 10, borderWidth: 1, borderColor: '#334155'}}>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10}}>
+                     <Text style={{color: '#e2e8f0', fontWeight: 'bold', fontSize: 13}}>
+                       {mediaPreviewType === 'video' ? 'Video seleccionado' : 'Imagen seleccionada'}
+                     </Text>
+                     <TouchableOpacity onPress={() => setMediaPreviewUri(null)} style={{padding: 4}}>
+                       <Ionicons name="close" size={18} color="#94a3b8" />
+                     </TouchableOpacity>
+                  </View>
                   
                   {mediaPreviewType === 'image' ? (
-                     <Image source={{uri: mediaPreviewUri}} style={{width: '100%', height: 200, resizeMode: 'cover', borderRadius: 8, marginBottom: 10}} />
+                     <Image source={{uri: mediaPreviewUri}} style={{width: '100%', height: 160, resizeMode: 'contain', borderRadius: 8, marginBottom: 12, backgroundColor: 'black'}} />
                   ) : (
-                     <View style={{width: '100%', height: 200, backgroundColor: 'black', borderRadius: 8, marginBottom: 10, justifyContent: 'center', alignItems: 'center'}}>
-                       <Ionicons name="videocam" size={48} color="#94a3b8" />
-                       <Text style={{color: '#94a3b8', marginTop: 10}}>Video cargado</Text>
+                     <View style={{width: '100%', height: 160, backgroundColor: 'black', borderRadius: 8, marginBottom: 12, justifyContent: 'center', alignItems: 'center'}}>
+                       <Ionicons name="videocam" size={48} color="#38bdf8" />
+                       <Text style={{color: '#38bdf8', marginTop: 8, fontSize: 12, fontWeight: 'bold'}}>Video con sonido listo para proyectar</Text>
                      </View>
                   )}
 
-                  <View style={{flexDirection: 'row', gap: 10}}>
-                     <TouchableOpacity style={[styles.projectButton, {flex: 1, backgroundColor: '#10b981'}]} onPress={() => {
-                        setProjection({ type: mediaPreviewType || 'image', content: mediaPreviewUri });
-                     }}>
-                        <Text style={styles.projectButtonText}>Proyectar Directo</Text>
+                  <View style={{flexDirection: 'row', gap: 8, flexWrap: 'wrap'}}>
+                     <TouchableOpacity 
+                        style={[styles.projectButton, {flex: 1, backgroundColor: '#10b981', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]} 
+                        onPress={() => {
+                          setProjection({ type: mediaPreviewType || 'image', content: mediaPreviewUri });
+                        }}
+                     >
+                        <Ionicons name="play" size={16} color="white" />
+                        <Text style={styles.projectButtonText}>Proyectar Directo {mediaPreviewType === 'video' ? '(con sonido)' : ''}</Text>
                      </TouchableOpacity>
-                     <TouchableOpacity style={[styles.projectButton, {flex: 1, backgroundColor: '#8b5cf6'}]} onPress={() => {
-                        if (mediaPreviewUri) {
-                          const alreadyExists = customBackgrounds.some(bg => bg.uri === mediaPreviewUri);
-                          if (!alreadyExists) {
-                             const newBg = { id: 'custom-'+Date.now(), type: mediaPreviewType, thumbnail: mediaPreviewUri, uri: mediaPreviewUri, name: 'Guardado' };
-                             setCustomBackgrounds([...customBackgrounds, newBg]);
+                     <TouchableOpacity 
+                        style={[styles.projectButton, {flex: 1, backgroundColor: '#8b5cf6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]} 
+                        onPress={() => {
+                          if (mediaPreviewUri) {
+                            const alreadyExists = customBackgrounds.some(bg => bg.uri === mediaPreviewUri);
+                            if (!alreadyExists) {
+                               const newBg = { 
+                                 id: 'custom-' + Date.now(), 
+                                 type: mediaPreviewType, 
+                                 thumbnail: mediaPreviewUri, 
+                                 uri: mediaPreviewUri, 
+                                 name: mediaPreviewType === 'video' ? 'Video Guardado' : 'Fondo Guardado' 
+                               };
+                               setCustomBackgrounds(prev => [...prev, newBg]);
+                            }
+                            setBackgroundMedia({ type: mediaPreviewType || 'image', uri: mediaPreviewUri });
                           }
-                          setBackgroundMedia({ type: mediaPreviewType || 'image', uri: mediaPreviewUri });
-                          setMediaPreviewUri(null);
-                        }
-                     }}>
-                        <Text style={styles.projectButtonText}>Fondo y Guardar</Text>
-                     </TouchableOpacity>
-                     <TouchableOpacity style={[styles.projectButton, {backgroundColor: '#ef4444'}]} onPress={() => {setMediaPreviewUri(null);}}>
-                        <Text style={styles.projectButtonText}>X</Text>
+                        }}
+                     >
+                        <Ionicons name="image" size={16} color="white" />
+                        <Text style={styles.projectButtonText}>Poner de Fondo</Text>
                      </TouchableOpacity>
                   </View>
                </View>
@@ -1479,9 +1582,22 @@ export default function VisualDTBApp() {
     }
     if (projection.type === 'video') {
        const uri = projection.content;
+       // Proyección directa de video: SÍ reproduce sonido al proyectar
+       // En miniPreview, si hay pantalla externa activa, silenciamos miniPreview para evitar eco doble.
+       // De lo contrario (o en modo presentación o TV), sonido activo (muted = false)!
+       const shouldMute = mode === 'miniPreview' && (hasExternalDisplay && externalDisplayEnabled);
        return (
          <View style={[styles.previewContentCenter, { padding: 0, backgroundColor: 'black' }]}>
-            <SafeVideoView key={uri} uri={uri} contentFit="contain" />
+            <SafeVideoView 
+              key={uri} 
+              uri={uri} 
+              contentFit="contain" 
+              muted={shouldMute} 
+              volume={1.0}
+              loop={true}
+              nativeControls={mode === 'presentation'}
+              isPaused={isPaused}
+            />
          </View>
        );
     }
@@ -1562,7 +1678,14 @@ export default function VisualDTBApp() {
                 )}
                 {backgroundMedia && backgroundMedia.type === 'video' && (
                   <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black' }]}>
-                    <SafeVideoView key={backgroundMedia.uri} uri={backgroundMedia.uri} contentFit="cover" />
+                    <SafeVideoView 
+                      key={backgroundMedia.uri} 
+                      uri={backgroundMedia.uri} 
+                      contentFit="cover" 
+                      muted={true} 
+                      loop={true} 
+                      isPaused={isPaused} 
+                    />
                   </View>
                 )}
 
