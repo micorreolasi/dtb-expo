@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, Animated, Easing, Platform, useWindowDimensions, Alert, NativeModules } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, Animated, Easing, Platform, useWindowDimensions, Alert, NativeModules, LayoutChangeEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -145,6 +145,272 @@ const mockSongs = [
 
 // Eliminamos mockBible ya que usaremos fullBible.
 
+// =============================================
+// DYNAMIC TEXT ENGINE: AUTO-FIT PER SCREEN
+// Guarantees zero text overflow and zero clipping across Phone, iPad, TV & Mini-Preview
+// =============================================
+
+interface DynamicProjectionTextProps {
+  content: string;
+  mode: 'miniPreview' | 'presentation' | 'external';
+  textColor: string;
+  textHasBackground: boolean;
+  sizeMultiplier?: number;
+  isCompact?: boolean;
+}
+
+function computeOptimalFontSize(
+  bodyText: string,
+  referenceText: string | null,
+  safeWidth: number,
+  safeHeight: number,
+  mode: 'miniPreview' | 'presentation' | 'external',
+  isCompact: boolean,
+  sizeMultiplier: number = 1.0
+): {
+  fontSize: number;
+  lineHeight: number;
+  refFontSize: number;
+  refLineHeight: number;
+  refMarginBottom: number;
+} {
+  const paragraphs = bodyText.split('\n');
+
+  let maxWordLen = 1;
+  for (const p of paragraphs) {
+    const words = p.split(/\s+/);
+    for (const w of words) {
+      if (w.length > maxWordLen) maxWordLen = w.length;
+    }
+  }
+
+  // Bounds depending on screen mode
+  let minFont = 4.5;
+  let maxFont = 22;
+
+  if (mode === 'miniPreview') {
+    if (isCompact) {
+      minFont = 5;
+      maxFont = 10;
+    } else {
+      minFont = 7;
+      maxFont = 16;
+    }
+  } else if (mode === 'presentation') {
+    if (isCompact) {
+      minFont = 12;
+      maxFont = 28;
+    } else {
+      minFont = 18;
+      maxFont = 44;
+    }
+  } else {
+    // External display (1080p / 4K)
+    minFont = 22;
+    maxFont = 56;
+  }
+
+  const step = mode === 'miniPreview' ? 0.5 : 1;
+  let bestFont = minFont;
+
+  for (let f = maxFont; f >= minFont; f -= step) {
+    // 1. Longest word must fit horizontally in safeWidth
+    const longestWordWidth = maxWordLen * (0.58 * f);
+    if (longestWordWidth > safeWidth * 0.95) {
+      continue;
+    }
+
+    // 2. Reference height if present
+    let refH = 0;
+    if (referenceText) {
+      const rf = Math.max(minFont * 0.85, f * 0.82);
+      const rlh = rf * 1.3;
+      const rmb = mode === 'miniPreview' ? 2 : Math.max(4, f * 0.28);
+      refH = rlh + rmb;
+    }
+
+    const availableH = safeHeight - refH;
+    if (availableH <= 0) continue;
+
+    // 3. Line wrapping calculation
+    const charsPerLine = Math.max(1, Math.floor((safeWidth * 0.94) / (0.53 * f)));
+    let totalLines = 0;
+    for (const p of paragraphs) {
+      const pLen = p.trim().length;
+      if (pLen === 0) {
+        totalLines += 0.5;
+      } else {
+        totalLines += Math.max(1, Math.ceil(pLen / charsPerLine));
+      }
+    }
+
+    // 4. Total body height
+    const lineH = f * 1.34;
+    const totalBodyH = totalLines * lineH;
+
+    if (totalBodyH <= availableH * 0.93) {
+      bestFont = f;
+      break;
+    }
+  }
+
+  // Apply user custom multiplier
+  let finalFontSize = Math.round(bestFont * sizeMultiplier * 10) / 10;
+  finalFontSize = Math.max(minFont * 0.8, Math.min(finalFontSize, maxFont * 1.3));
+  const finalLineHeight = Math.round(finalFontSize * 1.34 * 10) / 10;
+
+  const refFontSize = Math.max(minFont * 0.85, Math.round(finalFontSize * 0.82 * 10) / 10);
+  const refLineHeight = Math.round(refFontSize * 1.3 * 10) / 10;
+  const refMarginBottom = mode === 'miniPreview' ? 2 : Math.max(3, Math.round(finalFontSize * 0.28));
+
+  return {
+    fontSize: finalFontSize,
+    lineHeight: finalLineHeight,
+    refFontSize,
+    refLineHeight,
+    refMarginBottom,
+  };
+}
+
+const DynamicProjectionText: React.FC<DynamicProjectionTextProps> = ({
+  content,
+  mode,
+  textColor,
+  textHasBackground,
+  sizeMultiplier = 1.0,
+  isCompact = false,
+}) => {
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+
+  const getInitialSize = () => {
+    if (mode === 'presentation') {
+      return { width: winWidth, height: winHeight };
+    }
+    if (mode === 'miniPreview') {
+      return isCompact ? { width: 135, height: 75 } : { width: 260, height: 146 };
+    }
+    return { width: 1920, height: 1080 };
+  };
+
+  const [measuredSize, setMeasuredSize] = useState(getInitialSize());
+
+  const handleLayout = (e: LayoutChangeEvent) => {
+    const { width: w, height: h } = e.nativeEvent.layout;
+    if (w > 20 && h > 20) {
+      if (Math.abs(w - measuredSize.width) > 3 || Math.abs(h - measuredSize.height) > 3) {
+        setMeasuredSize({ width: w, height: h });
+      }
+    }
+  };
+
+  const cleanContent = content ? content.trim() : '';
+  if (!cleanContent) return null;
+
+  // Safe padding per mode
+  const padHoriz = mode === 'miniPreview' 
+    ? (isCompact ? 6 : 10) 
+    : (mode === 'presentation' ? (isCompact ? 20 : 44) : 60);
+
+  const padTop = mode === 'miniPreview' 
+    ? (isCompact ? 4 : 6) 
+    : (mode === 'presentation' ? (isCompact ? 16 : 28) : 40);
+
+  const padBottom = mode === 'miniPreview' 
+    ? (isCompact ? 4 : 6) 
+    : (mode === 'presentation' ? (isCompact ? 75 : 85) : 50);
+
+  const safeW = Math.max(40, measuredSize.width - padHoriz * 2);
+  const safeH = Math.max(30, measuredSize.height - (padTop + padBottom));
+
+  const lines = cleanContent.split('\n');
+  const firstLine = lines[0]?.trim() || '';
+  const hasReference = lines.length > 1 && /^([1-3]?\s?[A-Za-zÁÉÍÓÚáéíóúñÑ]+)\s+\d+:\d+(-\d+)?$/.test(firstLine);
+
+  const referenceText = hasReference ? firstLine : null;
+  const bodyText = hasReference ? lines.slice(1).join('\n').trim() : cleanContent;
+
+  const fontConfig = computeOptimalFontSize(
+    bodyText,
+    referenceText,
+    safeW,
+    safeH,
+    mode,
+    isCompact,
+    sizeMultiplier
+  );
+
+  return (
+    <View 
+      style={{
+        flex: 1,
+        width: '100%',
+        height: '100%',
+        alignSelf: 'stretch',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: padHoriz,
+        paddingTop: padTop,
+        paddingBottom: padBottom,
+        zIndex: 1,
+      }}
+      onLayout={handleLayout}
+    >
+      <View
+        style={[
+          {
+            width: '100%',
+            alignSelf: 'stretch',
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+          textHasBackground && {
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            paddingHorizontal: mode === 'miniPreview' ? 4 : (isCompact ? 14 : 22),
+            paddingVertical: mode === 'miniPreview' ? 2 : (isCompact ? 8 : 14),
+            borderRadius: mode === 'miniPreview' ? 4 : 10,
+          }
+        ]}
+      >
+        {referenceText && (
+          <Text
+            style={{
+              width: '100%',
+              alignSelf: 'stretch',
+              textAlign: 'center',
+              fontSize: fontConfig.refFontSize,
+              lineHeight: fontConfig.refLineHeight,
+              color: textColor === '#ffffff' ? '#93c5fd' : textColor,
+              fontWeight: 'bold',
+              marginBottom: fontConfig.refMarginBottom,
+              textShadowColor: 'rgba(0, 0, 0, 0.85)',
+              textShadowOffset: { width: -1, height: 1 },
+              textShadowRadius: 8,
+            }}
+          >
+            {referenceText}
+          </Text>
+        )}
+        <Text
+          style={{
+            width: '100%',
+            alignSelf: 'stretch',
+            textAlign: 'center',
+            fontSize: fontConfig.fontSize,
+            lineHeight: fontConfig.lineHeight,
+            color: textColor,
+            fontWeight: 'bold',
+            flexWrap: 'wrap',
+            textShadowColor: 'rgba(0, 0, 0, 0.85)',
+            textShadowOffset: { width: -1, height: 1 },
+            textShadowRadius: 10,
+          }}
+        >
+          {bodyText}
+        </Text>
+      </View>
+    </View>
+  );
+};
 
 export default function VisualDTBApp() {
   const { width, height } = useWindowDimensions();
@@ -173,7 +439,11 @@ export default function VisualDTBApp() {
   const [messageInput, setMessageInput] = useState<string>('');
   const [messageReps, setMessageReps] = useState<string>('3');
   const [activeMarquee, setActiveMarquee] = useState<string>('');
-  const scrollX = useRef(new Animated.Value(1000)).current;
+  const [marqueeSpeed, setMarqueeSpeed] = useState<'lento' | 'normal' | 'rapido'>('normal');
+  const [marqueeContainerWidth, setMarqueeContainerWidth] = useState<number>(360);
+  const scrollX = useRef(new Animated.Value(360)).current;
+  const scrollExtX = useRef(new Animated.Value(1400)).current;
+  const marqueeAnimRef = useRef<Animated.CompositeAnimation | null>(null);
 
   // Songs State
   const [songsList, setSongsList] = useState(mockSongs);
@@ -202,6 +472,7 @@ export default function VisualDTBApp() {
   const [brightness, setBrightness] = useState<number>(100);
   const [textSize, setTextSize] = useState<number>(48);
   const [textColor, setTextColor] = useState<string>('#ffffff');
+  const [textHasBackground, setTextHasBackground] = useState<boolean>(false);
 
   // External Display State
   const externalScreens = useExternalDisplay();
@@ -354,24 +625,62 @@ export default function VisualDTBApp() {
     }
   };
 
+  const stopMarquee = () => {
+    setActiveMarquee('');
+    if (marqueeAnimRef.current) {
+      marqueeAnimRef.current.stop();
+    }
+    scrollX.stopAnimation();
+    scrollExtX.stopAnimation();
+  };
+
   const playMarquee = () => {
     if (!messageInput.trim()) return;
-    setActiveMarquee(messageInput);
+    
+    // Stop any running animations first
+    if (marqueeAnimRef.current) {
+      marqueeAnimRef.current.stop();
+    }
+    scrollX.stopAnimation();
+    scrollExtX.stopAnimation();
+
+    setActiveMarquee(messageInput.trim());
     const reps = parseInt(messageReps) || 3;
     let count = 0;
+
+    const getDuration = () => {
+      if (marqueeSpeed === 'rapido') return 4500;
+      if (marqueeSpeed === 'lento') return 13000;
+      return 7500;
+    };
     
     const animate = () => {
-      if (count >= reps || isPaused) {
+      if ((reps < 999 && count >= reps) || isPaused) {
         if (!isPaused) setActiveMarquee('');
         return;
       }
-      scrollX.setValue(1000); 
-      Animated.timing(scrollX, {
-        toValue: -1500, 
-        duration: 12000, 
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
+      
+      const startX = marqueeContainerWidth > 0 ? marqueeContainerWidth : 360;
+      scrollX.setValue(startX);
+      scrollExtX.setValue(1400); 
+
+      const anim = Animated.parallel([
+        Animated.timing(scrollX, {
+          toValue: -650, 
+          duration: getDuration(), 
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scrollExtX, {
+          toValue: -1500, 
+          duration: getDuration(), 
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      ]);
+
+      marqueeAnimRef.current = anim;
+      anim.start(({ finished }) => {
         if (finished && !isPaused) {
           count++;
           animate();
@@ -384,7 +693,11 @@ export default function VisualDTBApp() {
 
   useEffect(() => {
     if (isPaused) {
+      if (marqueeAnimRef.current) {
+        marqueeAnimRef.current.stop();
+      }
       scrollX.stopAnimation();
+      scrollExtX.stopAnimation();
     }
   }, [isPaused]);
 
@@ -935,30 +1248,99 @@ export default function VisualDTBApp() {
       case 'Messages':
         return (
           <ScrollView style={styles.moduleContentSingle}>
-            <Text style={styles.mockTitle}>Anuncios Tipo Cintillo (Marquee)</Text>
+            <Text style={[styles.mockTitle, isCompact && { fontSize: 18, marginBottom: 12 }]}>Anuncios Tipo Cintillo (Marquee)</Text>
             <TextInput 
-              style={styles.textInput}
+              style={[styles.textInput, isCompact && { height: 90, padding: 12, fontSize: 14, marginBottom: 12 }]}
               placeholder="Escribe un anuncio para que aparezca abajo en movimiento..."
               placeholderTextColor="#64748b"
               value={messageInput}
               onChangeText={setMessageInput}
               multiline
             />
-            <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10}}>
-              <Text style={{color: '#94a3b8'}}>Repeticiones:</Text>
+
+            {/* Selector de Velocidad */}
+            <View style={{marginBottom: 14}}>
+              <Text style={{color: '#94a3b8', fontSize: 12, marginBottom: 6, fontWeight: 'bold'}}>Velocidad del Cintillo:</Text>
+              <View style={{flexDirection: 'row', gap: 6}}>
+                {[
+                  { id: 'lento', label: '🐢 Lento' },
+                  { id: 'normal', label: '🚶 Normal' },
+                  { id: 'rapido', label: '⚡ Rápido' }
+                ].map(s => {
+                  const isSelected = marqueeSpeed === s.id;
+                  return (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={{
+                        flex: 1,
+                        paddingVertical: isCompact ? 8 : 10,
+                        borderRadius: 8,
+                        backgroundColor: isSelected ? '#3b82f6' : '#1e293b',
+                        borderWidth: 1,
+                        borderColor: isSelected ? '#60a5fa' : '#334155',
+                        alignItems: 'center'
+                      }}
+                      onPress={() => setMarqueeSpeed(s.id as any)}
+                    >
+                      <Text style={{
+                        color: isSelected ? '#ffffff' : '#94a3b8',
+                        fontWeight: 'bold',
+                        fontSize: isCompact ? 11 : 13
+                      }}>
+                        {s.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Repeticiones */}
+            <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 8, flexWrap: 'wrap'}}>
+              <Text style={{color: '#94a3b8', fontSize: 12, fontWeight: 'bold'}}>Repeticiones:</Text>
               <TextInput 
-                style={[styles.textInput, {height: 40, marginBottom: 0, width: 80, padding: 10}]}
+                style={[styles.textInput, {height: 36, marginBottom: 0, width: 55, padding: 6, textAlign: 'center', fontSize: 13}]}
                 value={messageReps}
                 onChangeText={setMessageReps}
                 keyboardType="numeric"
               />
+              <View style={{flexDirection: 'row', gap: 4}}>
+                {['1', '3', '5', '∞'].map(r => {
+                  const isSelected = (messageReps === r || (r === '∞' && messageReps === '999'));
+                  return (
+                    <TouchableOpacity
+                      key={r}
+                      onPress={() => setMessageReps(r === '∞' ? '999' : r)}
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 6,
+                        borderRadius: 6,
+                        backgroundColor: isSelected ? '#3b82f6' : '#1e293b',
+                        borderWidth: 1,
+                        borderColor: isSelected ? '#60a5fa' : '#334155'
+                      }}
+                    >
+                      <Text style={{color: '#ffffff', fontSize: 11, fontWeight: 'bold'}}>{r}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
-            <TouchableOpacity style={styles.projectButton} onPress={playMarquee}>
+
+            <TouchableOpacity 
+              style={[styles.projectButton, {flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]} 
+              onPress={playMarquee}
+            >
+              <Ionicons name="play" size={16} color="#ffffff" />
               <Text style={styles.projectButtonText}>Lanzar Cintillo Animado</Text>
             </TouchableOpacity>
             
             {activeMarquee !== '' && (
-              <TouchableOpacity style={[styles.projectButton, {backgroundColor: '#ef4444', marginTop: 12}]} onPress={() => setActiveMarquee('')}>
+              <TouchableOpacity 
+                style={[styles.projectButton, {backgroundColor: '#ef4444', marginTop: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6}]} 
+                onPress={stopMarquee}
+              >
+                <Ionicons name="stop" size={16} color="#ffffff" />
                 <Text style={styles.projectButtonText}>Detener Cintillo</Text>
               </TouchableOpacity>
             )}
@@ -1061,21 +1443,26 @@ export default function VisualDTBApp() {
              ) : (
                 <Text style={{color: '#f59e0b', marginTop: 10, padding: 10, backgroundColor: '#78350f', borderRadius: 6}}>No se detecta pantalla externa. Conecta por HDMI o AirPlay.</Text>
              )}
-             <Text style={{color: '#94a3b8', marginTop: 10, fontSize: 12}}>Nota: Requiere App Nativa (EAS Build). En Expo Go, esta función no está soportada.</Text>
           </ScrollView>
         );
     }
   };
 
   // =============================================
-  // LOCAL PREVIEW - full features, runs on device screen
+  // PROJECTION CONTENT RENDERER
+  // Supports 'miniPreview', 'presentation' (fullscreen) and 'external' (TV)
   // =============================================
-  const renderPreviewContent = () => {
+  const renderPreviewContent = (mode: 'miniPreview' | 'presentation' | 'external' = 'miniPreview') => {
     if (projection.type === 'text') {
        return (
-         <View style={styles.previewContentCenter}>
-            <Text style={[styles.previewText, { fontSize: Math.max(textSize, 60), color: textColor, flexShrink: 1, width: '100%' }]} adjustsFontSizeToFit minimumFontScale={0.1} numberOfLines={25}>{projection.content}</Text>
-         </View>
+         <DynamicProjectionText
+           content={projection.content}
+           mode={mode}
+           textColor={textColor}
+           textHasBackground={textHasBackground}
+           sizeMultiplier={textSize / 48}
+           isCompact={isCompact}
+         />
        );
     }
     if (projection.type === 'image') {
@@ -1126,32 +1513,38 @@ export default function VisualDTBApp() {
 
        // Android - Local files open via native Android PDF app
        return (
-         <View style={styles.previewContentCenter}>
-           <Ionicons name="document-text" size={48} color="#38bdf8" />
-           <Text style={{color: '#ffffff', marginTop: 10, textAlign: 'center', fontWeight: 'bold', fontSize: 15}} numberOfLines={1}>
+         <View style={[styles.previewContentCenter, mode === 'miniPreview' ? { padding: 4 } : { padding: 24 }]}>
+           <Ionicons name="document-text" size={mode === 'miniPreview' ? 24 : 48} color="#38bdf8" />
+           <Text style={{color: '#ffffff', marginTop: mode === 'miniPreview' ? 4 : 10, textAlign: 'center', fontWeight: 'bold', fontSize: mode === 'miniPreview' ? 10 : 15}} numberOfLines={1}>
              {projection.title || currentDocName || 'Documento'}
            </Text>
-           <Text style={{color: '#94a3b8', fontSize: 11, marginTop: 4, textAlign: 'center', paddingHorizontal: 12}}>
-             Abre con tu app de PDF de Android para proyectar
-           </Text>
-           <TouchableOpacity
-             style={{marginTop: 10, backgroundColor: '#10b981', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6}}
-             onPress={async () => {
-               try {
-                 await Sharing.shareAsync(uri, { dialogTitle: 'Abrir con...' });
-               } catch (e) {}
-             }}
-           >
-             <Ionicons name="open-outline" size={14} color="#ffffff" />
-             <Text style={{color: '#ffffff', fontWeight: 'bold', fontSize: 12}}>Abrir en App de PDF</Text>
-           </TouchableOpacity>
+           {mode !== 'miniPreview' && (
+             <>
+               <Text style={{color: '#94a3b8', fontSize: 11, marginTop: 4, textAlign: 'center', paddingHorizontal: 12}}>
+                 Abre con tu app de PDF de Android para proyectar
+               </Text>
+               <TouchableOpacity
+                 style={{marginTop: 10, backgroundColor: '#10b981', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6}}
+                 onPress={async () => {
+                   try {
+                     await Sharing.shareAsync(uri, { dialogTitle: 'Abrir con...' });
+                   } catch (e) {}
+                 }}
+               >
+                 <Ionicons name="open-outline" size={14} color="#ffffff" />
+                 <Text style={{color: '#ffffff', fontWeight: 'bold', fontSize: 12}}>Abrir en App de PDF</Text>
+               </TouchableOpacity>
+             </>
+           )}
          </View>
        );
     }
     return null;
   };
 
-  const renderProjectionScreen = () => {
+  const renderProjectionScreen = (mode: 'miniPreview' | 'presentation' | 'external' = 'miniPreview') => {
+     const isExternal = mode === 'external';
+     const isMini = mode === 'miniPreview';
      return (
         <View style={{flex: 1, backgroundColor: 'black'}}>
            {isBlackout ? (
@@ -1173,12 +1566,35 @@ export default function VisualDTBApp() {
                   <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black', opacity: 1 - (brightness / 100), pointerEvents: 'none', zIndex: 40 }]} />
                 )}
                 
-                {renderPreviewContent()}
+                {renderPreviewContent(mode)}
                 
                 {activeMarquee !== '' && (
-                  <View style={styles.marqueeContainer}>
-                    <Animated.View style={{ transform: [{ translateX: scrollX }] }}>
-                      <Text style={styles.marqueeText} numberOfLines={1}>{activeMarquee}</Text>
+                  <View 
+                    style={[
+                      styles.marqueeContainer, 
+                      isMini && isCompact && styles.marqueeContainerCompact,
+                      isExternal && { height: 60 }
+                    ]}
+                    onLayout={(e) => {
+                      if (!isExternal) {
+                        const w = e.nativeEvent.layout.width;
+                        if (w > 0 && w !== marqueeContainerWidth) {
+                          setMarqueeContainerWidth(w);
+                        }
+                      }
+                    }}
+                  >
+                    <Animated.View style={{ transform: [{ translateX: isExternal ? scrollExtX : scrollX }] }}>
+                      <Text 
+                        style={[
+                          styles.marqueeText, 
+                          isMini && isCompact && styles.marqueeTextCompact,
+                          isExternal && { fontSize: 28, paddingHorizontal: 20 }
+                        ]} 
+                        numberOfLines={1}
+                      >
+                        {activeMarquee}
+                      </Text>
                     </Animated.View>
                   </View>
                 )}
@@ -1190,47 +1606,9 @@ export default function VisualDTBApp() {
 
   // =============================================
   // EXTERNAL DISPLAY - ultra-lightweight to prevent UI freeze
-  // NO adjustsFontSizeToFit, NO WebView backgrounds, NO animations
   // =============================================
   const renderExternalScreen = () => {
-     return (
-        <View style={{flex: 1, backgroundColor: 'black'}}>
-           {isBlackout ? (
-              <View style={{flex: 1, backgroundColor: 'black'}} />
-           ) : (
-              <>
-                {/* Background Media */}
-                {backgroundMedia && backgroundMedia.type === 'image' && (
-                  <Image source={{ uri: backgroundMedia.uri }} style={[StyleSheet.absoluteFill, {width: '100%', height: '100%', resizeMode: 'cover'}]} />
-                )}
-                {backgroundMedia && backgroundMedia.type === 'video' && (
-                  <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black' }]}>
-                    <SafeVideoView key={backgroundMedia.uri} uri={backgroundMedia.uri} contentFit="cover" />
-                  </View>
-                )}
-
-                {/* Brightness Overlay */}
-                {brightness < 100 && (
-                  <View style={[StyleSheet.absoluteFill, { backgroundColor: 'black', opacity: 1 - (brightness / 100), pointerEvents: 'none', zIndex: 40 }]} />
-                )}
-                
-                {/* Content - lightweight text rendering for text, standard for others */}
-                {projection.type === 'text' ? (
-                  <View style={styles.previewContentCenter}>
-                    <Text style={[styles.previewText, { fontSize: textSize, color: textColor, width: '100%' }]} numberOfLines={25}>{projection.content}</Text>
-                  </View>
-                ) : renderPreviewContent()}
-
-                {/* Marquee - simple, no animation on external (static banner) */}
-                {activeMarquee !== '' && (
-                  <View style={styles.marqueeContainer}>
-                    <Text style={styles.marqueeText} numberOfLines={1}>{activeMarquee}</Text>
-                  </View>
-                )}
-              </>
-           )}
-        </View>
-     );
+     return renderProjectionScreen('external');
   };
 
   // Toolbar auto-hide logic for Presentation Mode
@@ -1259,7 +1637,7 @@ export default function VisualDTBApp() {
   if (isPresentationMode) {
     return (
       <View style={{flex: 1, backgroundColor: '#000'}} onTouchStart={resetControlsTimeout}>
-        {renderProjectionScreen()}
+        {renderProjectionScreen('presentation')}
 
         {/* Floating toolbar at bottom (Auto-hiding) */}
         {showPresentationControls && (
@@ -1312,9 +1690,9 @@ export default function VisualDTBApp() {
     <>
       <SafeAreaView style={styles.container}>
       {/* SIDEBAR */}
-      <View style={[styles.sidebar, isCompact && { width: 60 }]}>
-        <View style={[styles.sidebarHeader, isCompact && { paddingHorizontal: 10, justifyContent: 'center' }]}>
-          <Ionicons name="desktop" size={28} color="#3b82f6" />
+      <View style={[styles.sidebar, isCompact && { width: 52, paddingVertical: 10 }]}>
+        <View style={[styles.sidebarHeader, isCompact && { marginBottom: 14, paddingHorizontal: 0, justifyContent: 'center' }]}>
+          <Ionicons name="desktop" size={isCompact ? 22 : 28} color="#3b82f6" />
           {!isCompact && <Text style={styles.sidebarTitle}>DTB</Text>}
         </View>
 
@@ -1322,12 +1700,16 @@ export default function VisualDTBApp() {
           {navItems.map((item) => (
             <TouchableOpacity 
               key={item.id} 
-              style={[styles.navItem, activeModule === item.id && styles.navItemActive, isCompact && { paddingHorizontal: 0, justifyContent: 'center' }]}
+              style={[
+                styles.navItem, 
+                activeModule === item.id && styles.navItemActive, 
+                isCompact && { paddingVertical: 8, marginVertical: 2, paddingHorizontal: 0, justifyContent: 'center' }
+              ]}
               onPress={() => setActiveModule(item.id)}
             >
               <Ionicons 
                 name={item.icon} 
-                size={24} 
+                size={isCompact ? 19 : 24} 
                 color={activeModule === item.id ? '#60a5fa' : '#94a3b8'} 
               />
               {!isCompact && (
@@ -1338,136 +1720,196 @@ export default function VisualDTBApp() {
             </TouchableOpacity>
           ))}
         </ScrollView>
-        
       </View>
 
       {/* MAIN CONTENT AREA */}
       <View style={styles.main}>
         {/* TOP BAR */}
-        <View style={styles.topBar}>
-          <Text style={styles.topBarTitle}>VisualDTB — {activeModule}</Text>
-          <View style={styles.topBarControls}>
+        <View style={[styles.topBar, isCompact && { height: 46, paddingHorizontal: 12 }]}>
+          <Text style={[styles.topBarTitle, isCompact && { fontSize: 15 }]}>VisualDTB — {activeModule}</Text>
+          <View style={[styles.topBarControls, isCompact && { gap: 8 }]}>
             {/* Presentation Mode Button */}
             <TouchableOpacity
-              style={{flexDirection: 'row', alignItems: 'center', backgroundColor: '#8b5cf6', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, gap: 6}}
+              style={[
+                {flexDirection: 'row', alignItems: 'center', backgroundColor: '#8b5cf6', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, gap: 6},
+                isCompact && { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, gap: 4 }
+              ]}
               onPress={() => setIsPresentationMode(true)}
             >
-              <Ionicons name="tv" size={16} color="#fff" />
-              <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 13}}>Presentar</Text>
+              <Ionicons name="tv" size={isCompact ? 13 : 16} color="#fff" />
+              <Text style={[{color: '#fff', fontWeight: 'bold', fontSize: 13}, isCompact && { fontSize: 11 }]}>Presentar</Text>
             </TouchableOpacity>
-            <View style={styles.tvStatusBadge}>
-              <Ionicons name="tv-outline" size={16} color="#94a3b8" />
-              <Text style={styles.tvStatusText}>Preview Mode</Text>
-            </View>
+            {!isCompact && (
+              <View style={styles.tvStatusBadge}>
+                <Ionicons name="tv-outline" size={16} color="#94a3b8" />
+                <Text style={styles.tvStatusText}>Preview Mode</Text>
+              </View>
+            )}
           </View>
         </View>
 
         {/* WORKSPACE & PREVIEW SPLIT */}
-        <View style={styles.workspace}>
+        <View style={[styles.workspace, isPortrait && isCompact && { flexDirection: 'column' }]}>
           {/* Module Controls Area */}
           <View style={styles.controlsArea}>
             {renderModuleContent()}
           </View>
 
           {/* TV Preview Area */}
-          <View style={[styles.previewArea, isLandscape && isCompact ? { width: 170, padding: 8 } : isCompact ? { width: '100%', height: 180, padding: 8 } : { width: 280, padding: 16 }]}>
-            <View style={styles.previewHeader}>
-              <Ionicons name="tv" size={14} color="#94a3b8" />
-              <Text style={styles.previewTitle}>PROYECCIÓN</Text>
+          <View style={[
+            styles.previewArea,
+            isCompact ? {
+              // En pantallas pequeñas (teléfonos): apartado de proyección aún más pequeño para ganar espacio
+              width: isLandscape ? 135 : '100%',
+              height: isLandscape ? undefined : 115,
+              padding: 6,
+              borderTopWidth: isLandscape ? 0 : 1,
+              borderTopColor: '#1e293b',
+              borderLeftWidth: isLandscape ? 1 : 0,
+              borderLeftColor: '#1e293b',
+              flex: 0,
+            } : {
+              // En iPad / pantallas grandes: conserva su tamaño completo original
+              width: 280,
+              padding: 16,
+              flex: 0,
+            }
+          ]}>
+            <View style={[styles.previewHeader, isCompact && { marginBottom: 4, gap: 4 }]}>
+              <Ionicons name="tv" size={isCompact ? 11 : 14} color="#94a3b8" />
+              <Text style={[styles.previewTitle, isCompact && { fontSize: 10 }]}>PROYECCIÓN</Text>
             </View>
-            <View style={[styles.previewScreen, isFullscreen && styles.previewScreenFullscreen]}>
-              {renderProjectionScreen()}
+            <View style={[
+              styles.previewScreen, 
+              isFullscreen && styles.previewScreenFullscreen,
+              isCompact && !isFullscreen && { maxHeight: 80 }
+            ]}>
+              {renderProjectionScreen('miniPreview')}
             </View>
-            <View style={{marginTop: 6}}>
+            {!isCompact && (
+              <View style={{marginTop: 6}}>
                 <Text style={{color: '#64748b', fontSize: 10, textAlign: 'center'}}>
                   {isPaused ? 'PAUSADO' : 'Vista previa de TV'}
                 </Text>
-            </View>
+              </View>
+            )}
           </View>
         </View>
 
         {/* BOTTOM TOOLBAR */}
-        <View style={[styles.bottomToolbar, isCompact && { height: 48, paddingVertical: 4, paddingHorizontal: 8 }]}>
-          <View style={styles.toolbarGroup}>
-            <Ionicons name="sunny" size={16} color="#94a3b8" />
-            <Text style={[styles.toolbarLabel, isCompact && { display: 'none' }]}>Brillo</Text>
-            <Slider
-              style={{width: isCompact ? 65 : 90, height: 30}}
-              minimumValue={10}
-              maximumValue={100}
-              value={brightness}
-              onValueChange={setBrightness}
-              minimumTrackTintColor="#ffffff"
-              maximumTrackTintColor="#334155"
-              thumbTintColor="#ffffff"
-            />
-            <Text style={styles.toolbarValue}>{Math.round(brightness)}%</Text>
-          </View>
-          
-          {/* Selector de Color de Letra */}
-          <View style={styles.toolbarGroup}>
-            <Ionicons name="color-palette" size={16} color="#94a3b8" />
-            <Text style={[styles.toolbarLabel, isCompact && { display: 'none' }]}>Color</Text>
-            <View style={{flexDirection: 'row', gap: 6, alignItems: 'center', backgroundColor: '#0f172a', paddingHorizontal: 6, paddingVertical: 4, borderRadius: 16}}>
-              {['#ffffff', '#facc15', '#38bdf8', '#4ade80', '#fb923c', '#f472b6'].map(c => (
-                <TouchableOpacity
-                  key={c}
-                  onPress={() => setTextColor(c)}
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    backgroundColor: c,
-                    borderWidth: textColor === c ? 2 : 1,
-                    borderColor: textColor === c ? '#3b82f6' : '#475569',
-                    transform: [{ scale: textColor === c ? 1.25 : 1 }]
-                  }}
-                />
-              ))}
+        <View style={[styles.bottomToolbar, isCompact && { height: 44, paddingVertical: 2, paddingHorizontal: 6 }]}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ alignItems: 'center', gap: isCompact ? 8 : 14, paddingRight: 8, minWidth: '100%' }}
+          >
+            {/* Brillo */}
+            <View style={styles.toolbarGroup}>
+              <Ionicons name="sunny" size={isCompact ? 13 : 16} color="#94a3b8" />
+              {!isCompact && <Text style={styles.toolbarLabel}>Brillo</Text>}
+              <Slider
+                style={{width: isCompact ? 55 : 90, height: 28}}
+                minimumValue={10}
+                maximumValue={100}
+                value={brightness}
+                onValueChange={setBrightness}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="#334155"
+                thumbTintColor="#ffffff"
+              />
+              <Text style={[styles.toolbarValue, isCompact && { fontSize: 9 }]}>{Math.round(brightness)}%</Text>
             </View>
-          </View>
+            
+            {/* Selector de Color de Letra (incluye Negro) */}
+            <View style={styles.toolbarGroup}>
+              <Ionicons name="color-palette" size={isCompact ? 13 : 16} color="#94a3b8" />
+              {!isCompact && <Text style={styles.toolbarLabel}>Color</Text>}
+              <View style={{flexDirection: 'row', gap: isCompact ? 4 : 6, alignItems: 'center', backgroundColor: '#0f172a', paddingHorizontal: isCompact ? 4 : 6, paddingVertical: 3, borderRadius: 14}}>
+                {['#ffffff', '#000000', '#facc15', '#38bdf8', '#4ade80', '#fb923c', '#f472b6'].map(c => (
+                  <TouchableOpacity
+                    key={c}
+                    onPress={() => setTextColor(c)}
+                    style={{
+                      width: isCompact ? 14 : 18,
+                      height: isCompact ? 14 : 18,
+                      borderRadius: isCompact ? 7 : 9,
+                      backgroundColor: c,
+                      borderWidth: textColor === c ? 2 : 1,
+                      borderColor: textColor === c ? '#3b82f6' : (c === '#000000' ? '#64748b' : '#334155'),
+                      transform: [{ scale: textColor === c ? 1.25 : 1 }]
+                    }}
+                  />
+                ))}
+              </View>
+            </View>
 
-          <View style={{flex: 1}} />
+            {/* Opción de Fondo de Letra (Negro o Transparente) */}
+            <TouchableOpacity
+              onPress={() => setTextHasBackground(!textHasBackground)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: textHasBackground ? '#3b82f625' : '#0f172a',
+                borderColor: textHasBackground ? '#3b82f6' : '#334155',
+                borderWidth: 1,
+                borderRadius: 6,
+                paddingHorizontal: isCompact ? 6 : 8,
+                paddingVertical: isCompact ? 3 : 5,
+                gap: 4
+              }}
+            >
+              <Ionicons name="square" size={isCompact ? 10 : 13} color={textHasBackground ? '#60a5fa' : '#64748b'} />
+              <Text style={{
+                color: textHasBackground ? '#60a5fa' : '#94a3b8',
+                fontSize: isCompact ? 10 : 11,
+                fontWeight: 'bold'
+              }}>
+                {textHasBackground ? 'Fondo: ON' : 'Fondo'}
+              </Text>
+            </TouchableOpacity>
 
-          {/* BOTONES INTERACTIVOS */}
-          <View style={styles.toolbarActions}>
-             {/* Playlist Controls */}
-             {playlist && (
-               <View style={{flexDirection: 'row', marginRight: 6, borderWidth: 1, borderColor: '#334155', borderRadius: 6}}>
-                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#3b82f620', borderRadius: 0, borderRightWidth: 1, borderRightColor: '#334155', borderTopLeftRadius: 6, borderBottomLeftRadius: 6}]} onPress={handlePrevSlide}>
-                   <Ionicons name="chevron-up" size={16} color="#3b82f6" />
-                 </TouchableOpacity>
-                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#3b82f620', borderRadius: 0, borderTopRightRadius: 6, borderBottomRightRadius: 6}]} onPress={handleNextSlide}>
-                   <Ionicons name="chevron-down" size={16} color="#3b82f6" />
-                 </TouchableOpacity>
-               </View>
-             )}
+            <View style={{flex: 1}} />
 
-             <TouchableOpacity 
-                style={[styles.actionBtn, {backgroundColor: '#f59e0b20', flexDirection: 'row', paddingHorizontal: 8, marginRight: 6}]} 
-                onPress={() => setProjection({ type: 'text', content: '' })}>
-               <Ionicons name="trash" size={14} color="#f59e0b" style={{marginRight: 4}}/>
-               <Text style={{color: '#f59e0b', fontWeight: 'bold', fontSize: 10}}>Limpiar</Text>
-             </TouchableOpacity>
+            {/* BOTONES INTERACTIVOS */}
+            <View style={[styles.toolbarActions, isCompact && { gap: 4 }]}>
+               {/* Playlist Controls */}
+               {playlist && (
+                 <View style={{flexDirection: 'row', marginRight: 4, borderWidth: 1, borderColor: '#334155', borderRadius: 6}}>
+                   <TouchableOpacity style={[styles.actionBtn, isCompact && { width: 26, height: 26 }, {backgroundColor: '#3b82f620', borderRadius: 0, borderRightWidth: 1, borderRightColor: '#334155', borderTopLeftRadius: 6, borderBottomLeftRadius: 6}]} onPress={handlePrevSlide}>
+                     <Ionicons name="chevron-up" size={isCompact ? 13 : 16} color="#3b82f6" />
+                   </TouchableOpacity>
+                   <TouchableOpacity style={[styles.actionBtn, isCompact && { width: 26, height: 26 }, {backgroundColor: '#3b82f620', borderRadius: 0, borderTopRightRadius: 6, borderBottomRightRadius: 6}]} onPress={handleNextSlide}>
+                     <Ionicons name="chevron-down" size={isCompact ? 13 : 16} color="#3b82f6" />
+                   </TouchableOpacity>
+                 </View>
+               )}
 
-             <TouchableOpacity 
-                style={[styles.actionBtn, isPaused && styles.actionBtnActive]} 
-                onPress={() => setIsPaused(!isPaused)}>
-               <Ionicons name="pause" size={16} color={isPaused ? "#ffffff" : "#cbd5e1"} />
-             </TouchableOpacity>
+               <TouchableOpacity 
+                  style={[styles.actionBtn, isCompact && { width: 26, height: 26, paddingHorizontal: 0 }, {backgroundColor: '#f59e0b20', flexDirection: 'row', paddingHorizontal: 8, marginRight: 2}]} 
+                  onPress={() => setProjection({ type: 'text', content: '' })}>
+                 <Ionicons name="trash" size={isCompact ? 12 : 14} color="#f59e0b" style={!isCompact ? {marginRight: 4} : {}}/>
+                 {!isCompact && <Text style={{color: '#f59e0b', fontWeight: 'bold', fontSize: 10}}>Limpiar</Text>}
+               </TouchableOpacity>
 
-             <TouchableOpacity 
-                style={[styles.actionBtn, isBlackout ? styles.actionBtnDanger : {backgroundColor: '#ef444420'}]} 
-                onPress={() => setIsBlackout(!isBlackout)}>
-               <Ionicons name="eye-off" size={16} color={isBlackout ? "#ffffff" : "#ef4444"} />
-             </TouchableOpacity>
+               <TouchableOpacity 
+                  style={[styles.actionBtn, isCompact && { width: 26, height: 26 }, isPaused && styles.actionBtnActive]} 
+                  onPress={() => setIsPaused(!isPaused)}>
+                 <Ionicons name="pause" size={isCompact ? 13 : 16} color={isPaused ? "#ffffff" : "#cbd5e1"} />
+               </TouchableOpacity>
 
-             <TouchableOpacity 
-                style={[styles.actionBtn, isFullscreen && styles.actionBtnSuccess]} 
-                onPress={() => setIsFullscreen(!isFullscreen)}>
-               <Ionicons name="expand" size={16} color={isFullscreen ? "#ffffff" : "#10b981"} />
-             </TouchableOpacity>
-          </View>
+               <TouchableOpacity 
+                  style={[styles.actionBtn, isCompact && { width: 26, height: 26 }, isBlackout ? styles.actionBtnDanger : {backgroundColor: '#ef444420'}]} 
+                  onPress={() => setIsBlackout(!isBlackout)}>
+                 <Ionicons name="eye-off" size={isCompact ? 13 : 16} color={isBlackout ? "#ffffff" : "#ef4444"} />
+               </TouchableOpacity>
+
+               <TouchableOpacity 
+                  style={[styles.actionBtn, isCompact && { width: 26, height: 26 }, isFullscreen && styles.actionBtnSuccess]} 
+                  onPress={() => setIsFullscreen(!isFullscreen)}>
+                 <Ionicons name="expand" size={isCompact ? 13 : 16} color={isFullscreen ? "#ffffff" : "#10b981"} />
+               </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
       </View>
       </SafeAreaView>
@@ -1550,11 +1992,13 @@ const styles = StyleSheet.create({
   previewScreen: { width: '100%', aspectRatio: 16/9, backgroundColor: '#000000', borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
   previewScreenFullscreen: { transform: [{scale: 1.1}], zIndex: 10, shadowColor: '#10b981', shadowOpacity: 0.5, shadowRadius: 20 },
   
-  previewContentCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, zIndex: 1 },
+  previewContentCenter: { flex: 1, width: '100%', alignSelf: 'stretch', justifyContent: 'center', alignItems: 'center', zIndex: 1 },
   previewText: { color: '#ffffff', fontSize: 28, fontWeight: 'bold', textAlign: 'center', textShadowColor: 'rgba(0, 0, 0, 0.75)', textShadowOffset: {width: -1, height: 1}, textShadowRadius: 10 },
   
-  marqueeContainer: { position: 'absolute', bottom: 0, width: '100%', height: 60, backgroundColor: 'rgba(220, 38, 38, 0.9)', justifyContent: 'center', zIndex: 50 },
-  marqueeText: { color: '#ffffff', fontSize: 28, fontWeight: 'bold', paddingHorizontal: 20 },
+  marqueeContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, width: '100%', height: 50, backgroundColor: 'rgba(220, 38, 38, 0.95)', justifyContent: 'center', overflow: 'hidden', zIndex: 50 },
+  marqueeContainerCompact: { height: 28 },
+  marqueeText: { color: '#ffffff', fontSize: 24, fontWeight: 'bold', paddingHorizontal: 12 },
+  marqueeTextCompact: { fontSize: 12, paddingHorizontal: 6 },
 
   bottomToolbar: { height: 50, backgroundColor: '#1e293b', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8, justifyContent: 'space-between' },
   toolbarGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
