@@ -44,7 +44,7 @@ const RealVideoPlayer = ({
   const player = useNativeVideoPlayer(uri, (p: any) => {
     p.loop = loop;
     p.muted = muted;
-    p.volume = volume;
+    p.volume = muted ? 0 : volume;
     if (isPaused) {
       p.pause();
     } else {
@@ -55,7 +55,7 @@ const RealVideoPlayer = ({
   useEffect(() => {
     if (player) {
       player.muted = muted;
-      player.volume = volume;
+      player.volume = muted ? 0 : volume;
       player.loop = loop;
       if (isPaused) {
         player.pause();
@@ -1683,6 +1683,7 @@ export default function VisualDTBApp() {
                       uri={backgroundMedia.uri} 
                       contentFit="cover" 
                       muted={true} 
+                      volume={0}
                       loop={true} 
                       isPaused={isPaused} 
                     />
