@@ -1932,12 +1932,64 @@ export default function VisualDTBApp() {
         </View>
 
         {/* BOTTOM TOOLBAR */}
-        <View style={[styles.bottomToolbar, isCompact && { height: 44, paddingVertical: 2, paddingHorizontal: 6 }]}>
+        <View style={[styles.bottomToolbar, isCompact && { height: 48, paddingVertical: 2, paddingHorizontal: 4 }]}>
           <ScrollView 
             horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ alignItems: 'center', gap: isCompact ? 8 : 14, paddingRight: 8, minWidth: '100%' }}
+            showsHorizontalScrollIndicator={true}
+            persistentScrollbar={true}
+            contentContainerStyle={{ alignItems: 'center', gap: isCompact ? 6 : 10, paddingHorizontal: 6, paddingRight: 24 }}
           >
+            {/* BOTONES INTERACTIVOS (Urgentes: Limpiar, Pausa, Blackout, Pantalla Completa) */}
+            <View style={[styles.toolbarActions, isCompact && { gap: 4 }]}>
+               {/* Limpiar */}
+               <TouchableOpacity 
+                  style={[
+                    styles.actionBtn, 
+                    isCompact ? { height: 28, paddingHorizontal: 8, width: undefined, borderRadius: 6 } : { height: 32, paddingHorizontal: 10, width: undefined }, 
+                    { backgroundColor: '#f59e0b25', flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#f59e0b50' }
+                  ]} 
+                  onPress={() => setProjection({ type: 'text', content: '' })}>
+                 <Ionicons name="trash" size={isCompact ? 13 : 15} color="#f59e0b" />
+                 <Text style={{color: '#f59e0b', fontWeight: 'bold', fontSize: isCompact ? 11 : 12}}>Limpiar</Text>
+               </TouchableOpacity>
+
+               {/* Pausar */}
+               <TouchableOpacity 
+                  style={[styles.actionBtn, isCompact && { width: 28, height: 28 }, isPaused && styles.actionBtnActive]} 
+                  onPress={() => setIsPaused(!isPaused)}>
+                 <Ionicons name="pause" size={isCompact ? 13 : 16} color={isPaused ? "#ffffff" : "#cbd5e1"} />
+               </TouchableOpacity>
+
+               {/* Blackout */}
+               <TouchableOpacity 
+                  style={[styles.actionBtn, isCompact && { width: 28, height: 28 }, isBlackout ? styles.actionBtnDanger : {backgroundColor: '#ef444420'}]} 
+                  onPress={() => setIsBlackout(!isBlackout)}>
+                 <Ionicons name="eye-off" size={isCompact ? 13 : 16} color={isBlackout ? "#ffffff" : "#ef4444"} />
+               </TouchableOpacity>
+
+               {/* Pantalla completa / Expandir */}
+               <TouchableOpacity 
+                  style={[styles.actionBtn, isCompact && { width: 28, height: 28 }, isFullscreen && styles.actionBtnSuccess]} 
+                  onPress={() => setIsFullscreen(!isFullscreen)}>
+                 <Ionicons name="expand" size={isCompact ? 13 : 16} color={isFullscreen ? "#ffffff" : "#10b981"} />
+               </TouchableOpacity>
+
+               {/* Playlist Controls */}
+               {playlist && (
+                 <View style={{flexDirection: 'row', borderWidth: 1, borderColor: '#334155', borderRadius: 6}}>
+                   <TouchableOpacity style={[styles.actionBtn, isCompact && { width: 26, height: 28 }, {backgroundColor: '#3b82f620', borderRadius: 0, borderRightWidth: 1, borderRightColor: '#334155', borderTopLeftRadius: 6, borderBottomLeftRadius: 6}]} onPress={handlePrevSlide}>
+                     <Ionicons name="chevron-up" size={isCompact ? 13 : 16} color="#3b82f6" />
+                   </TouchableOpacity>
+                   <TouchableOpacity style={[styles.actionBtn, isCompact && { width: 26, height: 28 }, {backgroundColor: '#3b82f620', borderRadius: 0, borderTopRightRadius: 6, borderBottomRightRadius: 6}]} onPress={handleNextSlide}>
+                     <Ionicons name="chevron-down" size={isCompact ? 13 : 16} color="#3b82f6" />
+                   </TouchableOpacity>
+                 </View>
+               )}
+            </View>
+
+            {/* Separador visual */}
+            <View style={{ width: 1, height: 20, backgroundColor: '#334155', marginHorizontal: 2 }} />
+
             {/* Brillo */}
             <View style={styles.toolbarGroup}>
               <Ionicons name="sunny" size={isCompact ? 13 : 16} color="#94a3b8" />
@@ -1954,6 +2006,9 @@ export default function VisualDTBApp() {
               />
               <Text style={[styles.toolbarValue, isCompact && { fontSize: 9 }]}>{Math.round(brightness)}%</Text>
             </View>
+
+            {/* Separador visual */}
+            <View style={{ width: 1, height: 20, backgroundColor: '#334155', marginHorizontal: 2 }} />
             
             {/* Selector de Color de Letra (incluye Negro) */}
             <View style={styles.toolbarGroup}>
@@ -2002,48 +2057,6 @@ export default function VisualDTBApp() {
                 {textHasBackground ? 'Fondo: ON' : 'Fondo'}
               </Text>
             </TouchableOpacity>
-
-            <View style={{flex: 1}} />
-
-            {/* BOTONES INTERACTIVOS */}
-            <View style={[styles.toolbarActions, isCompact && { gap: 4 }]}>
-               {/* Playlist Controls */}
-               {playlist && (
-                 <View style={{flexDirection: 'row', marginRight: 4, borderWidth: 1, borderColor: '#334155', borderRadius: 6}}>
-                   <TouchableOpacity style={[styles.actionBtn, isCompact && { width: 26, height: 26 }, {backgroundColor: '#3b82f620', borderRadius: 0, borderRightWidth: 1, borderRightColor: '#334155', borderTopLeftRadius: 6, borderBottomLeftRadius: 6}]} onPress={handlePrevSlide}>
-                     <Ionicons name="chevron-up" size={isCompact ? 13 : 16} color="#3b82f6" />
-                   </TouchableOpacity>
-                   <TouchableOpacity style={[styles.actionBtn, isCompact && { width: 26, height: 26 }, {backgroundColor: '#3b82f620', borderRadius: 0, borderTopRightRadius: 6, borderBottomRightRadius: 6}]} onPress={handleNextSlide}>
-                     <Ionicons name="chevron-down" size={isCompact ? 13 : 16} color="#3b82f6" />
-                   </TouchableOpacity>
-                 </View>
-               )}
-
-               <TouchableOpacity 
-                  style={[styles.actionBtn, isCompact && { width: 26, height: 26, paddingHorizontal: 0 }, {backgroundColor: '#f59e0b20', flexDirection: 'row', paddingHorizontal: 8, marginRight: 2}]} 
-                  onPress={() => setProjection({ type: 'text', content: '' })}>
-                 <Ionicons name="trash" size={isCompact ? 12 : 14} color="#f59e0b" style={!isCompact ? {marginRight: 4} : {}}/>
-                 {!isCompact && <Text style={{color: '#f59e0b', fontWeight: 'bold', fontSize: 10}}>Limpiar</Text>}
-               </TouchableOpacity>
-
-               <TouchableOpacity 
-                  style={[styles.actionBtn, isCompact && { width: 26, height: 26 }, isPaused && styles.actionBtnActive]} 
-                  onPress={() => setIsPaused(!isPaused)}>
-                 <Ionicons name="pause" size={isCompact ? 13 : 16} color={isPaused ? "#ffffff" : "#cbd5e1"} />
-               </TouchableOpacity>
-
-               <TouchableOpacity 
-                  style={[styles.actionBtn, isCompact && { width: 26, height: 26 }, isBlackout ? styles.actionBtnDanger : {backgroundColor: '#ef444420'}]} 
-                  onPress={() => setIsBlackout(!isBlackout)}>
-                 <Ionicons name="eye-off" size={isCompact ? 13 : 16} color={isBlackout ? "#ffffff" : "#ef4444"} />
-               </TouchableOpacity>
-
-               <TouchableOpacity 
-                  style={[styles.actionBtn, isCompact && { width: 26, height: 26 }, isFullscreen && styles.actionBtnSuccess]} 
-                  onPress={() => setIsFullscreen(!isFullscreen)}>
-                 <Ionicons name="expand" size={isCompact ? 13 : 16} color={isFullscreen ? "#ffffff" : "#10b981"} />
-               </TouchableOpacity>
-            </View>
           </ScrollView>
         </View>
       </View>
