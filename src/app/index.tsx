@@ -504,7 +504,7 @@ export default function VisualDTBApp() {
 
   // Songs State
   const [songsList, setSongsList] = useState(mockSongs);
-  const [selectedSongId, setSelectedSongId] = useState<string>('s1');
+  const [selectedSongId, setSelectedSongId] = useState<string>('');
   const [songSearch, setSongSearch] = useState<string>('');
 
   // New Song States
@@ -1833,7 +1833,13 @@ export default function VisualDTBApp() {
                 activeModule === item.id && styles.navItemActive, 
                 isCompact && { paddingVertical: 8, marginVertical: 2, paddingHorizontal: 0, justifyContent: 'center' }
               ]}
-              onPress={() => setActiveModule(item.id)}
+              onPress={() => {
+                setActiveModule(item.id);
+                if (item.id === 'Songs') {
+                  setSelectedSongId('');
+                  setIsAddingSong(false);
+                }
+              }}
             >
               <Ionicons 
                 name={item.icon} 
