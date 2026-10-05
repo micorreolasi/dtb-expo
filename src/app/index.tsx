@@ -352,7 +352,7 @@ const DynamicProjectionText: React.FC<DynamicProjectionTextProps> = ({
       return { width: winWidth, height: winHeight };
     }
     if (mode === 'miniPreview') {
-      return isCompact ? { width: 135, height: 75 } : { width: 260, height: 146 };
+      return isCompact ? { width: 100, height: 50 } : { width: 260, height: 146 };
     }
     return { width: 1920, height: 1080 };
   };
@@ -481,7 +481,7 @@ export default function VisualDTBApp() {
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
   const isPortrait = height >= width;
-  const isCompact = width < 768;
+  const isCompact = Math.min(width, height) < 600;
 
   const [activeModule, setActiveModule] = useState<ModuleType>('Bible');
   const [projection, setProjection] = useState<ProjectionData>({ type: 'text', content: 'VISUAL DTB\nListo para proyectar' });
@@ -2162,8 +2162,8 @@ export default function VisualDTBApp() {
             styles.previewArea,
             isCompact ? {
               // En pantallas pequeñas (teléfonos): apartado de proyección aún más pequeño para ganar espacio
-              width: isLandscape ? 100 : '100%',
-              height: isLandscape ? undefined : 68,
+              width: isLandscape ? 110 : '100%',
+              height: isLandscape ? undefined : 64,
               padding: 3,
               borderTopWidth: isLandscape ? 0 : 1,
               borderTopColor: '#1e293b',
@@ -2184,7 +2184,7 @@ export default function VisualDTBApp() {
             <View style={[
               styles.previewScreen, 
               isFullscreen && styles.previewScreenFullscreen,
-              isCompact && !isFullscreen && { height: 46, maxHeight: 46 }
+              isCompact && !isFullscreen && { height: isLandscape ? 56 : 44, maxHeight: isLandscape ? 56 : 44 }
             ]}>
               {renderProjectionScreen('miniPreview')}
             </View>
