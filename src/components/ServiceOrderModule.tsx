@@ -298,40 +298,40 @@ export default function ServiceOrderModule({
       )}
 
       {/* 3. BOTONERA DE ACCIÓN: AÑADIR A ORDEN DE CULTO */}
-      <View style={styles.addButtonsBar}>
+      <View style={[styles.addButtonsBar, isCompact && { paddingHorizontal: 6, paddingVertical: 4, gap: 4 }]}>
         <TouchableOpacity
-          style={[styles.addBtn, { backgroundColor: '#3b82f620', borderColor: '#3b82f650' }]}
+          style={[styles.addBtn, isCompact && { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5, gap: 2 }, { backgroundColor: '#3b82f620', borderColor: '#3b82f650' }]}
           onPress={() => setShowSongModal(true)}
         >
-          <Ionicons name="musical-notes" size={15} color="#3b82f6" />
-          <Text style={[styles.addBtnText, { color: '#60a5fa' }]}>+ Canción</Text>
+          <Ionicons name="musical-notes" size={isCompact ? 12 : 15} color="#3b82f6" />
+          <Text style={[styles.addBtnText, isCompact && { fontSize: 10 }, { color: '#60a5fa' }]}>+ Canción</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.addBtn, { backgroundColor: '#f59e0b20', borderColor: '#f59e0b50' }]}
+          style={[styles.addBtn, isCompact && { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5, gap: 2 }, { backgroundColor: '#f59e0b20', borderColor: '#f59e0b50' }]}
           onPress={() => {
             setVerseModalTab(recentVerses.length > 0 ? 'recent' : 'manual');
             setShowVerseModal(true);
           }}
         >
-          <Ionicons name="book" size={15} color="#f59e0b" />
-          <Text style={[styles.addBtnText, { color: '#fbbf24' }]}>+ Versículo</Text>
+          <Ionicons name="book" size={isCompact ? 12 : 15} color="#f59e0b" />
+          <Text style={[styles.addBtnText, isCompact && { fontSize: 10 }, { color: '#fbbf24' }]}>+ Versículo</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.addBtn, { backgroundColor: '#8b5cf620', borderColor: '#8b5cf650' }]}
+          style={[styles.addBtn, isCompact && { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5, gap: 2 }, { backgroundColor: '#8b5cf620', borderColor: '#8b5cf650' }]}
           onPress={() => setShowMediaModal(true)}
         >
-          <Ionicons name="images" size={15} color="#a78bfa" />
-          <Text style={[styles.addBtnText, { color: '#c4b5fd' }]}>+ Multimedia</Text>
+          <Ionicons name="images" size={isCompact ? 12 : 15} color="#a78bfa" />
+          <Text style={[styles.addBtnText, isCompact && { fontSize: 10 }, { color: '#c4b5fd' }]}>+ Multimedia</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.addBtn, { backgroundColor: '#10b98120', borderColor: '#10b98150' }]}
+          style={[styles.addBtn, isCompact && { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5, gap: 2 }, { backgroundColor: '#10b98120', borderColor: '#10b98150' }]}
           onPress={() => setShowNoteModal(true)}
         >
-          <Ionicons name="document-text" size={15} color="#10b981" />
-          <Text style={[styles.addBtnText, { color: '#34d399' }]}>+ Bloque / Nota</Text>
+          <Ionicons name="document-text" size={isCompact ? 12 : 15} color="#10b981" />
+          <Text style={[styles.addBtnText, isCompact && { fontSize: 10 }, { color: '#34d399' }]}>+ Bloque</Text>
         </TouchableOpacity>
       </View>
 
@@ -357,7 +357,7 @@ export default function ServiceOrderModule({
                 style={[
                   styles.serviceItemCard,
                   isProjecting && styles.serviceItemCardActive,
-                  isCompact && { padding: 10 },
+                  isCompact && { padding: 6, marginVertical: 2 },
                 ]}
                 onPress={() => onProjectItem(item)}
               >

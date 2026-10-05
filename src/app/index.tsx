@@ -1076,7 +1076,7 @@ export default function VisualDTBApp() {
         return (
           <View style={[styles.twoColumnLayout, isPortrait && { flexDirection: 'column' }]}>
              {/* Columna Izquierda: Buscador y Libros */}
-             <View style={[styles.columnLeft, isLandscape ? { width: Math.min(240, width * 0.32) } : { height: 220, borderRightWidth: 0, borderBottomWidth: 1 }]}>
+             <View style={[styles.columnLeft, isLandscape ? { width: Math.min(240, width * 0.32) } : { height: isCompact ? 160 : 220, borderRightWidth: 0, borderBottomWidth: 1 }]}>
                 <View style={{flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderBottomColor: '#1e293b'}}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {loadedBibles.map(b => (
@@ -1139,7 +1139,7 @@ export default function VisualDTBApp() {
                                return (
                                  <TouchableOpacity 
                                    key={`${b.name}-${chapterNum}`} 
-                                   style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'center', margin: 4, borderRadius: 20, backgroundColor: selectedChapter === chapterNum ? '#3b82f6' : '#1e293b' }}
+                                   style={isCompact ? { width: 28, height: 28, justifyContent: 'center', alignItems: 'center', margin: 2, borderRadius: 14, backgroundColor: selectedChapter === chapterNum ? '#3b82f6' : '#1e293b' } : { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', margin: 4, borderRadius: 20, backgroundColor: selectedChapter === chapterNum ? '#3b82f6' : '#1e293b' }}
                                    onPress={() => setSelectedChapter(chapterNum)}
                                  >
                                    <Text style={{ color: selectedChapter === chapterNum ? '#ffffff' : '#94a3b8', fontWeight: 'bold' }}>{chapterNum}</Text>
@@ -2086,9 +2086,9 @@ export default function VisualDTBApp() {
     <>
       <SafeAreaView style={styles.container}>
       {/* SIDEBAR */}
-      <View style={[styles.sidebar, isCompact && { width: 52, paddingVertical: 10 }]}>
-        <View style={[styles.sidebarHeader, isCompact && { marginBottom: 14, paddingHorizontal: 0, justifyContent: 'center' }]}>
-          <Ionicons name="desktop" size={isCompact ? 22 : 28} color="#3b82f6" />
+      <View style={[styles.sidebar, isCompact && { width: 42, paddingVertical: 6 }]}>
+        <View style={[styles.sidebarHeader, isCompact && { marginBottom: 6, paddingHorizontal: 0, justifyContent: 'center' }]}>
+          <Ionicons name="desktop" size={isCompact ? 18 : 28} color="#3b82f6" />
           {!isCompact && <Text style={styles.sidebarTitle}>DTB</Text>}
         </View>
 
@@ -2099,7 +2099,7 @@ export default function VisualDTBApp() {
               style={[
                 styles.navItem, 
                 activeModule === item.id && styles.navItemActive, 
-                isCompact && { paddingVertical: 8, marginVertical: 2, paddingHorizontal: 0, justifyContent: 'center' }
+                isCompact && { paddingVertical: 5, marginVertical: 1, paddingHorizontal: 0, justifyContent: 'center' }
               ]}
               onPress={() => {
                 setActiveModule(item.id);
@@ -2111,7 +2111,7 @@ export default function VisualDTBApp() {
             >
               <Ionicons 
                 name={item.icon} 
-                size={isCompact ? 19 : 24} 
+                size={isCompact ? 16 : 24} 
                 color={activeModule === item.id ? '#60a5fa' : '#94a3b8'} 
               />
               {!isCompact && (
@@ -2127,19 +2127,19 @@ export default function VisualDTBApp() {
       {/* MAIN CONTENT AREA */}
       <View style={styles.main}>
         {/* TOP BAR */}
-        <View style={[styles.topBar, isCompact && { height: 46, paddingHorizontal: 12 }]}>
-          <Text style={[styles.topBarTitle, isCompact && { fontSize: 15 }]}>VisualDTB — {activeModule === 'Service' ? 'Orden de Culto' : activeModule}</Text>
-          <View style={[styles.topBarControls, isCompact && { gap: 8 }]}>
+        <View style={[styles.topBar, isCompact && { height: 38, paddingHorizontal: 8 }]}>
+          <Text style={[styles.topBarTitle, isCompact && { fontSize: 13 }]} numberOfLines={1}>VisualDTB — {activeModule === 'Service' ? 'Orden de Culto' : activeModule}</Text>
+          <View style={[styles.topBarControls, isCompact && { gap: 6 }]}>
             {/* Presentation Mode Button */}
             <TouchableOpacity
               style={[
                 {flexDirection: 'row', alignItems: 'center', backgroundColor: '#8b5cf6', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, gap: 6},
-                isCompact && { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, gap: 4 }
+                isCompact && { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5, gap: 3 }
               ]}
               onPress={() => setIsPresentationMode(true)}
             >
-              <Ionicons name="tv" size={isCompact ? 13 : 16} color="#fff" />
-              <Text style={[{color: '#fff', fontWeight: 'bold', fontSize: 13}, isCompact && { fontSize: 11 }]}>Presentar</Text>
+              <Ionicons name="tv" size={isCompact ? 12 : 16} color="#fff" />
+              <Text style={[{color: '#fff', fontWeight: 'bold', fontSize: 13}, isCompact && { fontSize: 10 }]}>Presentar</Text>
             </TouchableOpacity>
             {!isCompact && (
               <View style={styles.tvStatusBadge}>
@@ -2162,9 +2162,9 @@ export default function VisualDTBApp() {
             styles.previewArea,
             isCompact ? {
               // En pantallas pequeñas (teléfonos): apartado de proyección aún más pequeño para ganar espacio
-              width: isLandscape ? 135 : '100%',
-              height: isLandscape ? undefined : 115,
-              padding: 6,
+              width: isLandscape ? 100 : '100%',
+              height: isLandscape ? undefined : 68,
+              padding: 3,
               borderTopWidth: isLandscape ? 0 : 1,
               borderTopColor: '#1e293b',
               borderLeftWidth: isLandscape ? 1 : 0,
@@ -2177,14 +2177,14 @@ export default function VisualDTBApp() {
               flex: 0,
             }
           ]}>
-            <View style={[styles.previewHeader, isCompact && { marginBottom: 4, gap: 4 }]}>
-              <Ionicons name="tv" size={isCompact ? 11 : 14} color="#94a3b8" />
-              <Text style={[styles.previewTitle, isCompact && { fontSize: 10 }]}>PROYECCIÓN</Text>
+            <View style={[styles.previewHeader, isCompact && { marginBottom: 2, gap: 3 }]}>
+              <Ionicons name="tv" size={isCompact ? 10 : 14} color="#94a3b8" />
+              <Text style={[styles.previewTitle, isCompact && { fontSize: 8 }]}>PROYECCIÓN</Text>
             </View>
             <View style={[
               styles.previewScreen, 
               isFullscreen && styles.previewScreenFullscreen,
-              isCompact && !isFullscreen && { maxHeight: 80 }
+              isCompact && !isFullscreen && { height: 46, maxHeight: 46 }
             ]}>
               {renderProjectionScreen('miniPreview')}
             </View>
@@ -2199,70 +2199,70 @@ export default function VisualDTBApp() {
         </View>
 
         {/* BOTTOM TOOLBAR */}
-        <View style={[styles.bottomToolbar, isCompact && { height: 48, paddingVertical: 2, paddingHorizontal: 4 }]}>
+        <View style={[styles.bottomToolbar, isCompact && { height: 38, paddingVertical: 2, paddingHorizontal: 3 }]}>
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={true}
             persistentScrollbar={true}
-            contentContainerStyle={{ alignItems: 'center', gap: isCompact ? 6 : 10, paddingHorizontal: 6, paddingRight: 24 }}
+            contentContainerStyle={{ alignItems: 'center', gap: isCompact ? 4 : 10, paddingHorizontal: 4, paddingRight: 20 }}
           >
             {/* BOTONES INTERACTIVOS (Urgentes: Limpiar, Pausa, Blackout, Pantalla Completa) */}
-            <View style={[styles.toolbarActions, isCompact && { gap: 4 }]}>
+            <View style={[styles.toolbarActions, isCompact && { gap: 3 }]}>
                {/* Limpiar */}
                <TouchableOpacity 
                   style={[
                     styles.actionBtn, 
-                    isCompact ? { height: 28, paddingHorizontal: 8, width: undefined, borderRadius: 6 } : { height: 32, paddingHorizontal: 10, width: undefined }, 
-                    { backgroundColor: '#f59e0b25', flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: '#f59e0b50' }
+                    isCompact ? { height: 24, paddingHorizontal: 6, width: undefined, borderRadius: 4 } : { height: 32, paddingHorizontal: 10, width: undefined }, 
+                    { backgroundColor: '#f59e0b25', flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderColor: '#f59e0b50' }
                   ]} 
                   onPress={() => setProjection({ type: 'text', content: '' })}>
-                 <Ionicons name="trash" size={isCompact ? 13 : 15} color="#f59e0b" />
-                 <Text style={{color: '#f59e0b', fontWeight: 'bold', fontSize: isCompact ? 11 : 12}}>Limpiar</Text>
+                 <Ionicons name="trash" size={isCompact ? 11 : 15} color="#f59e0b" />
+                 <Text style={{color: '#f59e0b', fontWeight: 'bold', fontSize: isCompact ? 10 : 12}}>Limpiar</Text>
                </TouchableOpacity>
 
                {/* Pausar */}
                <TouchableOpacity 
-                  style={[styles.actionBtn, isCompact && { width: 28, height: 28 }, isPaused && styles.actionBtnActive]} 
+                  style={[styles.actionBtn, isCompact && { width: 24, height: 24, borderRadius: 4 }, isPaused && styles.actionBtnActive]} 
                   onPress={() => setIsPaused(!isPaused)}>
-                 <Ionicons name="pause" size={isCompact ? 13 : 16} color={isPaused ? "#ffffff" : "#cbd5e1"} />
+                 <Ionicons name="pause" size={isCompact ? 11 : 16} color={isPaused ? "#ffffff" : "#cbd5e1"} />
                </TouchableOpacity>
 
                {/* Blackout */}
                <TouchableOpacity 
-                  style={[styles.actionBtn, isCompact && { width: 28, height: 28 }, isBlackout ? styles.actionBtnDanger : {backgroundColor: '#ef444420'}]} 
+                  style={[styles.actionBtn, isCompact && { width: 24, height: 24, borderRadius: 4 }, isBlackout ? styles.actionBtnDanger : {backgroundColor: '#ef444420'}]} 
                   onPress={() => setIsBlackout(!isBlackout)}>
-                 <Ionicons name="eye-off" size={isCompact ? 13 : 16} color={isBlackout ? "#ffffff" : "#ef4444"} />
+                 <Ionicons name="eye-off" size={isCompact ? 11 : 16} color={isBlackout ? "#ffffff" : "#ef4444"} />
                </TouchableOpacity>
 
                {/* Pantalla completa / Expandir */}
                <TouchableOpacity 
-                  style={[styles.actionBtn, isCompact && { width: 28, height: 28 }, isFullscreen && styles.actionBtnSuccess]} 
+                  style={[styles.actionBtn, isCompact && { width: 24, height: 24, borderRadius: 4 }, isFullscreen && styles.actionBtnSuccess]} 
                   onPress={() => setIsFullscreen(!isFullscreen)}>
-                 <Ionicons name="expand" size={isCompact ? 13 : 16} color={isFullscreen ? "#ffffff" : "#10b981"} />
+                 <Ionicons name="expand" size={isCompact ? 11 : 16} color={isFullscreen ? "#ffffff" : "#10b981"} />
                </TouchableOpacity>
 
                {/* Playlist Controls */}
                {playlist && (
-                 <View style={{flexDirection: 'row', borderWidth: 1, borderColor: '#334155', borderRadius: 6}}>
-                   <TouchableOpacity style={[styles.actionBtn, isCompact && { width: 26, height: 28 }, {backgroundColor: '#3b82f620', borderRadius: 0, borderRightWidth: 1, borderRightColor: '#334155', borderTopLeftRadius: 6, borderBottomLeftRadius: 6}]} onPress={handlePrevSlide}>
-                     <Ionicons name="chevron-up" size={isCompact ? 13 : 16} color="#3b82f6" />
+                 <View style={{flexDirection: 'row', borderWidth: 1, borderColor: '#334155', borderRadius: 4}}>
+                   <TouchableOpacity style={[styles.actionBtn, isCompact && { width: 22, height: 24 }, {backgroundColor: '#3b82f620', borderRadius: 0, borderRightWidth: 1, borderRightColor: '#334155', borderTopLeftRadius: 4, borderBottomLeftRadius: 4}]} onPress={handlePrevSlide}>
+                     <Ionicons name="chevron-up" size={isCompact ? 11 : 16} color="#3b82f6" />
                    </TouchableOpacity>
-                   <TouchableOpacity style={[styles.actionBtn, isCompact && { width: 26, height: 28 }, {backgroundColor: '#3b82f620', borderRadius: 0, borderTopRightRadius: 6, borderBottomRightRadius: 6}]} onPress={handleNextSlide}>
-                     <Ionicons name="chevron-down" size={isCompact ? 13 : 16} color="#3b82f6" />
+                   <TouchableOpacity style={[styles.actionBtn, isCompact && { width: 22, height: 24 }, {backgroundColor: '#3b82f620', borderRadius: 0, borderTopRightRadius: 4, borderBottomRightRadius: 4}]} onPress={handleNextSlide}>
+                     <Ionicons name="chevron-down" size={isCompact ? 11 : 16} color="#3b82f6" />
                    </TouchableOpacity>
                  </View>
                )}
             </View>
 
             {/* Separador visual */}
-            <View style={{ width: 1, height: 20, backgroundColor: '#334155', marginHorizontal: 2 }} />
+            <View style={{ width: 1, height: isCompact ? 14 : 20, backgroundColor: '#334155', marginHorizontal: 1 }} />
 
             {/* Brillo */}
             <View style={styles.toolbarGroup}>
-              <Ionicons name="sunny" size={isCompact ? 13 : 16} color="#94a3b8" />
+              <Ionicons name="sunny" size={isCompact ? 11 : 16} color="#94a3b8" />
               {!isCompact && <Text style={styles.toolbarLabel}>Brillo</Text>}
               <Slider
-                style={{width: isCompact ? 55 : 90, height: 28}}
+                style={{width: isCompact ? 48 : 90, height: 24}}
                 minimumValue={10}
                 maximumValue={100}
                 value={brightness}
@@ -2271,25 +2271,25 @@ export default function VisualDTBApp() {
                 maximumTrackTintColor="#334155"
                 thumbTintColor="#ffffff"
               />
-              <Text style={[styles.toolbarValue, isCompact && { fontSize: 9 }]}>{Math.round(brightness)}%</Text>
+              <Text style={[styles.toolbarValue, isCompact && { fontSize: 8 }]}>{Math.round(brightness)}%</Text>
             </View>
 
             {/* Separador visual */}
-            <View style={{ width: 1, height: 20, backgroundColor: '#334155', marginHorizontal: 2 }} />
+            <View style={{ width: 1, height: isCompact ? 14 : 20, backgroundColor: '#334155', marginHorizontal: 1 }} />
             
             {/* Selector de Color de Letra (incluye Negro) */}
             <View style={styles.toolbarGroup}>
-              <Ionicons name="color-palette" size={isCompact ? 13 : 16} color="#94a3b8" />
+              <Ionicons name="color-palette" size={isCompact ? 11 : 16} color="#94a3b8" />
               {!isCompact && <Text style={styles.toolbarLabel}>Color</Text>}
-              <View style={{flexDirection: 'row', gap: isCompact ? 4 : 6, alignItems: 'center', backgroundColor: '#0f172a', paddingHorizontal: isCompact ? 4 : 6, paddingVertical: 3, borderRadius: 14}}>
+              <View style={{flexDirection: 'row', gap: isCompact ? 3 : 6, alignItems: 'center', backgroundColor: '#0f172a', paddingHorizontal: isCompact ? 3 : 6, paddingVertical: 2, borderRadius: 10}}>
                 {['#ffffff', '#000000', '#facc15', '#38bdf8', '#4ade80', '#fb923c', '#f472b6'].map(c => (
                   <TouchableOpacity
                     key={c}
                     onPress={() => setTextColor(c)}
                     style={{
-                      width: isCompact ? 14 : 18,
-                      height: isCompact ? 14 : 18,
-                      borderRadius: isCompact ? 7 : 9,
+                      width: isCompact ? 12 : 18,
+                      height: isCompact ? 12 : 18,
+                      borderRadius: isCompact ? 6 : 9,
                       backgroundColor: c,
                       borderWidth: textColor === c ? 2 : 1,
                       borderColor: textColor === c ? '#3b82f6' : (c === '#000000' ? '#64748b' : '#334155'),
@@ -2300,6 +2300,9 @@ export default function VisualDTBApp() {
               </View>
             </View>
 
+            {/* Separador visual */}
+            <View style={{ width: 1, height: isCompact ? 14 : 20, backgroundColor: '#334155', marginHorizontal: 1 }} />
+
             {/* Opción de Fondo de Letra (Negro o Transparente) */}
             <TouchableOpacity
               onPress={() => setTextHasBackground(!textHasBackground)}
@@ -2309,16 +2312,16 @@ export default function VisualDTBApp() {
                 backgroundColor: textHasBackground ? '#3b82f625' : '#0f172a',
                 borderColor: textHasBackground ? '#3b82f6' : '#334155',
                 borderWidth: 1,
-                borderRadius: 6,
-                paddingHorizontal: isCompact ? 6 : 8,
-                paddingVertical: isCompact ? 3 : 5,
-                gap: 4
+                borderRadius: 4,
+                paddingHorizontal: isCompact ? 5 : 8,
+                paddingVertical: isCompact ? 2 : 5,
+                gap: 3
               }}
             >
-              <Ionicons name="square" size={isCompact ? 10 : 13} color={textHasBackground ? '#60a5fa' : '#64748b'} />
+              <Ionicons name="square" size={isCompact ? 9 : 13} color={textHasBackground ? '#60a5fa' : '#64748b'} />
               <Text style={{
                 color: textHasBackground ? '#60a5fa' : '#94a3b8',
-                fontSize: isCompact ? 10 : 11,
+                fontSize: isCompact ? 9 : 11,
                 fontWeight: 'bold'
               }}>
                 {textHasBackground ? 'Fondo: ON' : 'Fondo'}
