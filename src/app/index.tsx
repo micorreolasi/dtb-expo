@@ -11,6 +11,14 @@ import * as Sharing from 'expo-sharing';
 import Slider from '@react-native-community/slider';
 import ExternalDisplay, { useExternalDisplay } from '../utils/safeExternalDisplay';
 import fullBible from '../bible.json';
+import ServiceOrderModule from '../components/ServiceOrderModule';
+import {
+  ServiceOrder,
+  ServiceItem,
+  defaultServices,
+  loadSavedServices,
+  saveServicesToDisk,
+} from '../utils/serviceStorage';
 
 let NativeVideoView: any = null;
 let useNativeVideoPlayer: any = null;
@@ -117,7 +125,7 @@ const SafeVideoView = ({
   );
 };
 
-type ModuleType = 'Bible' | 'Songs' | 'Media' | 'Documents' | 'Messages' | 'Timer' | 'Web' | 'Settings';
+type ModuleType = 'Service' | 'Bible' | 'Songs' | 'Media' | 'Documents' | 'Messages' | 'Timer' | 'Web' | 'Settings';
 
 type ProjectionData = {
   type: 'text' | 'image' | 'video' | 'web' | 'pdf' | 'document';
@@ -541,6 +549,194 @@ export default function VisualDTBApp() {
   const [isReadingDocument, setIsReadingDocument] = useState<boolean>(false);
   const [currentDocName, setCurrentDocName] = useState<string>('');
 
+  // Service Order State
+  const [services, setServices] = useState<ServiceOrder[]>(defaultServices);
+  const [activeServiceId, setActiveServiceId] = useState<string>('srv-default-1');
+  const [activeServiceItemId, setActiveServiceItemId] = useState<string | null>(null);
+  const [recentVerses, setRecentVerses] = useState<{ ref: string; text: string; fullContent: string }[]>([]);
+
+  // Load saved services on mount
+  useEffect(() => {
+    loadSavedServices().then((loaded) => {
+      if (loaded && loaded.length > 0) {
+        setServices(loaded);
+        setActiveServiceId(loaded[0].id);
+      }
+    });
+  }, []);
+
+  const updateServices = (newServices: ServiceOrder[]) => {
+    setServices(newServices);
+    saveServicesToDisk(newServices);
+  };
+
+  const handleCreateService = (name: string, date: string) => {
+    const newService: ServiceOrder = {
+      id: 'srv-' + Date.now(),
+      name,
+      date,
+      defaultBackgroundUri: backgroundMedia?.uri || defaultBackgrounds[0].uri,
+      defaultBackgroundType: (backgroundMedia?.type || defaultBackgrounds[0].type) as any,
+      items: [],
+    };
+    const updated = [newService, ...services];
+    updateServices(updated);
+    setActiveServiceId(newService.id);
+  };
+
+  const handleDeleteService = (serviceId: string) => {
+    const updated = services.filter((s) => s.id !== serviceId);
+    updateServices(updated);
+    if (activeServiceId === serviceId && updated.length > 0) {
+      setActiveServiceId(updated[0].id);
+    }
+  };
+
+  const handleUpdateServiceBackground = (serviceId: string, bg: { uri: string; type: 'image' | 'video' } | null) => {
+    const updated = services.map((s) => {
+      if (s.id === serviceId) {
+        return {
+          ...s,
+          defaultBackgroundUri: bg?.uri || null,
+          defaultBackgroundType: bg?.type || null,
+        };
+      }
+      return s;
+    });
+    updateServices(updated);
+  };
+
+  const handleAddItemToService = (serviceId: string, itemData: Omit<ServiceItem, 'id'>) => {
+    const newItem: ServiceItem = {
+      id: 'item-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      ...itemData,
+    };
+    const updated = services.map((s) => {
+      if (s.id === serviceId) {
+        return {
+          ...s,
+          items: [...s.items, newItem],
+        };
+      }
+      return s;
+    });
+    updateServices(updated);
+  };
+
+  const handleRemoveItemFromService = (serviceId: string, itemId: string) => {
+    const updated = services.map((s) => {
+      if (s.id === serviceId) {
+        return {
+          ...s,
+          items: s.items.filter((item) => item.id !== itemId),
+        };
+      }
+      return s;
+    });
+    updateServices(updated);
+    if (activeServiceItemId === itemId) {
+      setActiveServiceItemId(null);
+    }
+  };
+
+  const handleReorderItemInService = (serviceId: string, itemId: string, direction: 'up' | 'down') => {
+    const service = services.find((s) => s.id === serviceId);
+    if (!service) return;
+    const items = [...service.items];
+    const index = items.findIndex((i) => i.id === itemId);
+    if (index < 0) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+    const temp = items[index];
+    items[index] = items[targetIndex];
+    items[targetIndex] = temp;
+
+    const updated = services.map((s) => (s.id === serviceId ? { ...s, items } : s));
+    updateServices(updated);
+  };
+
+  const handleUpdateItemBackground = (
+    serviceId: string,
+    itemId: string,
+    bg: { uri: string; type: 'image' | 'video' } | null
+  ) => {
+    const updated = services.map((s) => {
+      if (s.id === serviceId) {
+        return {
+          ...s,
+          items: s.items.map((i) =>
+            i.id === itemId
+              ? { ...i, backgroundUri: bg?.uri || null, backgroundType: bg?.type || null }
+              : i
+          ),
+        };
+      }
+      return s;
+    });
+    updateServices(updated);
+  };
+
+  const handleProjectServiceItem = (item: ServiceItem) => {
+    setActiveServiceItemId(item.id);
+    const service = services.find((s) => s.id === activeServiceId);
+    const bgUri = item.backgroundUri || service?.defaultBackgroundUri;
+    const bgType = item.backgroundType || service?.defaultBackgroundType || 'image';
+
+    if (bgUri) {
+      setBackgroundMedia({ type: bgType, uri: bgUri });
+    }
+
+    if (item.type === 'song' && item.stanzas && item.stanzas.length > 0) {
+      const items = item.stanzas.map((st) => st.text);
+      setPlaylist({ items, currentIndex: 0 });
+      setProjection({ type: 'text', content: items[0] });
+    } else if (item.type === 'verse' || item.type === 'note') {
+      setPlaylist({ items: [item.content], currentIndex: 0 });
+      setProjection({ type: 'text', content: item.content });
+    } else if (item.type === 'media') {
+      setProjection({ type: item.backgroundType || 'image', content: item.content });
+    }
+  };
+
+  const addRecentVerse = (item: { ref: string; text: string; fullContent: string }) => {
+    setRecentVerses((prev) => {
+      const filtered = prev.filter((v) => v.ref !== item.ref);
+      return [item, ...filtered].slice(0, 25);
+    });
+  };
+
+  const quickAddVerseToActiveService = (ref: string, text: string, fullContent: string) => {
+    const service = services.find((s) => s.id === activeServiceId) || services[0];
+    if (!service) return;
+    handleAddItemToService(service.id, {
+      type: 'verse',
+      title: ref,
+      subtitle: text.length > 55 ? text.substring(0, 55) + '...' : text,
+      verseRef: ref,
+      content: fullContent,
+      backgroundUri: service.defaultBackgroundUri || null,
+      backgroundType: service.defaultBackgroundType || null,
+    });
+    Alert.alert('Añadido al Culto', `${ref} añadido a "${service.name}".`);
+  };
+
+  const quickAddSongToActiveService = (song: any) => {
+    const service = services.find((s) => s.id === activeServiceId) || services[0];
+    if (!service) return;
+    const firstText = song.stanzas?.[0]?.text || song.title;
+    handleAddItemToService(service.id, {
+      type: 'song',
+      title: song.title,
+      subtitle: `${song.stanzas?.length || 0} estrofas`,
+      songId: song.id,
+      content: firstText,
+      stanzas: song.stanzas,
+      backgroundUri: service.defaultBackgroundUri || null,
+      backgroundType: service.defaultBackgroundType || null,
+    });
+    Alert.alert('Añadido al Culto', `"${song.title}" añadida a "${service.name}".`);
+  };
+
   // Playlist Navigation
   const [playlist, setPlaylist] = useState<{ items: string[], currentIndex: number } | null>(null);
 
@@ -602,6 +798,7 @@ export default function VisualDTBApp() {
   };
 
   const allNavItems: { id: ModuleType, icon: keyof typeof Ionicons.glyphMap, label: string }[] = [
+    { id: 'Service', icon: 'layers', label: 'Servicio' },
     { id: 'Bible', icon: 'book', label: 'Biblia' },
     { id: 'Songs', icon: 'musical-notes', label: 'Canciones' },
     { id: 'Media', icon: 'images', label: 'Medios' },
@@ -804,6 +1001,30 @@ export default function VisualDTBApp() {
 
   const renderModuleContent = () => {
     switch(activeModule) {
+      case 'Service':
+        return (
+          <ServiceOrderModule
+            services={services}
+            activeServiceId={activeServiceId}
+            activeServiceItemId={activeServiceItemId}
+            onSelectService={setActiveServiceId}
+            onCreateService={handleCreateService}
+            onDeleteService={handleDeleteService}
+            onUpdateServiceBackground={handleUpdateServiceBackground}
+            onAddItem={handleAddItemToService}
+            onRemoveItem={handleRemoveItemFromService}
+            onReorderItem={handleReorderItemInService}
+            onUpdateItemBackground={handleUpdateItemBackground}
+            onProjectItem={handleProjectServiceItem}
+            songsList={songsList}
+            recentVerses={recentVerses}
+            customBackgrounds={customBackgrounds}
+            loadedBibles={loadedBibles}
+            isCompact={isCompact}
+            isLandscape={isLandscape}
+          />
+        );
+
       case 'Bible':
         const activeBibleObj = loadedBibles.find(b => b.id === activeBibleId) || loadedBibles[0];
         const currentBibleData = activeBibleObj.data;
@@ -946,6 +1167,9 @@ export default function VisualDTBApp() {
                            key={verseNum}
                            style={styles.mockVerse} 
                            onPress={() => {
+                             const fullRef = `${selectedBook} ${selectedChapter}:${verseNum}`;
+                             const verseContent = `${fullRef}\n${verseText}`;
+                             addRecentVerse({ ref: fullRef, text: verseText, fullContent: verseContent });
                              const items = activeChapterData.map((v: string, i: number) => `${selectedBook} ${selectedChapter}:${i+1}\n${v}`);
                              setPlaylist({ items, currentIndex: index });
                              setProjection({ type: 'text', content: items[index] });
@@ -953,6 +1177,30 @@ export default function VisualDTBApp() {
                          >
                            <Text style={styles.verseNumber}>{verseNum}</Text>
                            <Text style={styles.verseText}>{verseText}</Text>
+                           <TouchableOpacity
+                             style={{
+                               paddingHorizontal: 8,
+                               paddingVertical: 4,
+                               backgroundColor: '#f59e0b20',
+                               borderRadius: 6,
+                               borderWidth: 1,
+                               borderColor: '#f59e0b50',
+                               flexDirection: 'row',
+                               alignItems: 'center',
+                               gap: 3,
+                               marginLeft: 8,
+                             }}
+                             onPress={(e) => {
+                               e.stopPropagation();
+                               const fullRef = `${selectedBook} ${selectedChapter}:${verseNum}`;
+                               const verseContent = `${fullRef}\n${verseText}`;
+                               addRecentVerse({ ref: fullRef, text: verseText, fullContent: verseContent });
+                               quickAddVerseToActiveService(fullRef, verseText, verseContent);
+                             }}
+                           >
+                             <Ionicons name="add-circle" size={14} color="#fbbf24" />
+                             <Text style={{ color: '#fbbf24', fontSize: 10, fontWeight: 'bold' }}>+ Culto</Text>
+                           </TouchableOpacity>
                          </TouchableOpacity>
                        );
                      })}
@@ -1021,6 +1269,16 @@ export default function VisualDTBApp() {
                            </View>
                            
                            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                             <TouchableOpacity 
+                               style={{paddingHorizontal: 6, paddingVertical: 3, backgroundColor: '#3b82f620', borderRadius: 4, borderWidth: 1, borderColor: '#3b82f640', flexDirection: 'row', alignItems: 'center', gap: 2}} 
+                               onPress={(e) => {
+                                 e.stopPropagation();
+                                 quickAddSongToActiveService(s);
+                               }}
+                             >
+                               <Ionicons name="add" size={13} color="#60a5fa" />
+                               <Text style={{color: '#60a5fa', fontSize: 10, fontWeight: 'bold'}}>Culto</Text>
+                             </TouchableOpacity>
                              {s.id.startsWith('custom') && (
                                <>
                                  <TouchableOpacity style={{padding: 4}} onPress={() => handleEditSong(s.id)}>
@@ -1109,7 +1367,16 @@ export default function VisualDTBApp() {
                  </ScrollView>
                ) : activeSong ? (
                  <>
-                   <Text style={styles.mockTitle}>{activeSong.title}</Text>
+                   <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+                     <Text style={[styles.mockTitle, {marginBottom: 0, flex: 1}]}>{activeSong.title}</Text>
+                     <TouchableOpacity
+                       style={{flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#3b82f620', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: '#3b82f650'}}
+                       onPress={() => quickAddSongToActiveService(activeSong)}
+                     >
+                       <Ionicons name="add-circle" size={15} color="#60a5fa" />
+                       <Text style={{color: '#60a5fa', fontSize: 11, fontWeight: 'bold'}}>Añadir al Culto</Text>
+                     </TouchableOpacity>
+                   </View>
                    <ScrollView style={{flex: 1}}>
                      {activeSong.stanzas.map((stanza, index) => {
                        const isCurrentStanza = playlist?.items?.[playlist.currentIndex] === stanza.text;
@@ -1861,7 +2128,7 @@ export default function VisualDTBApp() {
       <View style={styles.main}>
         {/* TOP BAR */}
         <View style={[styles.topBar, isCompact && { height: 46, paddingHorizontal: 12 }]}>
-          <Text style={[styles.topBarTitle, isCompact && { fontSize: 15 }]}>VisualDTB — {activeModule}</Text>
+          <Text style={[styles.topBarTitle, isCompact && { fontSize: 15 }]}>VisualDTB — {activeModule === 'Service' ? 'Orden de Culto' : activeModule}</Text>
           <View style={[styles.topBarControls, isCompact && { gap: 8 }]}>
             {/* Presentation Mode Button */}
             <TouchableOpacity
