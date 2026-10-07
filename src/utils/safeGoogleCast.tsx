@@ -111,10 +111,137 @@ export const SafeCastButton: React.FC<SafeCastButtonProps> = ({
   );
 };
 
+let lastCastRequestTime = 0;
+let pendingCastTimeout: any = null;
+
+export interface CastSlidePayload {
+  isBlackout: boolean;
+  projection: { type: string; content: string; title?: string };
+  backgroundMedia?: { type: 'image' | 'video'; uri: string } | null;
+  textColor?: string;
+  textHasBackground?: boolean;
+}
+
+export const castMediaSlide = (
+  castSession: any,
+  payload: CastSlidePayload
+) => {
+  if (Platform.OS !== 'android' || !castSession) return;
+
+  // Debounce de 120ms para evitar saturar el buffer de Chromecast al navegar rápido
+  if (pendingCastTimeout) clearTimeout(pendingCastTimeout);
+
+  pendingCastTimeout = setTimeout(async () => {
+    try {
+      const client = castSession.client || (castSession.getClient && castSession.getClient());
+      if (!client || typeof client.loadMedia !== 'function') return;
+
+      const { isBlackout, projection, backgroundMedia } = payload;
+
+      // 1. Apagado de pantalla (Blackout)
+      if (isBlackout) {
+        await client.loadMedia({
+          autoplay: true,
+          mediaInfo: {
+            contentUrl: 'https://placehold.co/1920x1080/000000/000000.png?text=%20',
+            contentType: 'image/png',
+          },
+        });
+        return;
+      }
+
+      // 2. Video directo o de alabanza
+      if (projection && projection.type === 'video' && projection.content) {
+        const isRemoteUrl = projection.content.startsWith('http://') || projection.content.startsWith('https://');
+        if (isRemoteUrl) {
+          await client.loadMedia({
+            autoplay: true,
+            mediaInfo: {
+              contentUrl: projection.content,
+              contentType: 'video/mp4',
+            },
+          });
+          return;
+        }
+      }
+
+      // 3. Imagen directa proyectada
+      if (projection && projection.type === 'image' && projection.content) {
+        const isRemoteUrl = projection.content.startsWith('http://') || projection.content.startsWith('https://');
+        if (isRemoteUrl) {
+          await client.loadMedia({
+            autoplay: true,
+            mediaInfo: {
+              contentUrl: projection.content,
+              contentType: 'image/jpeg',
+            },
+          });
+          return;
+        }
+      }
+
+      // 4. Video de fondo
+      if (backgroundMedia && backgroundMedia.type === 'video' && backgroundMedia.uri && (!projection || !projection.content)) {
+        const isRemoteUrl = backgroundMedia.uri.startsWith('http://') || backgroundMedia.uri.startsWith('https://');
+        if (isRemoteUrl) {
+          await client.loadMedia({
+            autoplay: true,
+            mediaInfo: {
+              contentUrl: backgroundMedia.uri,
+              contentType: 'video/mp4',
+            },
+          });
+          return;
+        }
+      }
+
+      // 5. Diapositiva de Texto (Biblia, Canciones, Notas)
+      if (projection && projection.type === 'text' && projection.content) {
+        const rawText = projection.content.trim();
+        // Limitar a 450 caracteres para asegurar URLs HTTP seguras
+        const truncated = rawText.length > 450 ? rawText.substring(0, 447) + '...' : rawText;
+        const encodedText = encodeURIComponent(truncated);
+        const bgHex = payload.textHasBackground ? '0f172a' : '000000';
+        const fgHex = (payload.textColor || 'ffffff').replace('#', '');
+        
+        const slideUrl = `https://placehold.co/1920x1080/${bgHex}/${fgHex}.png?font=roboto&text=${encodedText}`;
+
+        await client.loadMedia({
+          autoplay: true,
+          mediaInfo: {
+            contentUrl: slideUrl,
+            contentType: 'image/png',
+          },
+        });
+        return;
+      }
+
+      // 6. Imagen de fondo pura
+      if (backgroundMedia && backgroundMedia.type === 'image' && backgroundMedia.uri) {
+        const isRemoteUrl = backgroundMedia.uri.startsWith('http://') || backgroundMedia.uri.startsWith('https://');
+        if (isRemoteUrl) {
+          await client.loadMedia({
+            autoplay: true,
+            mediaInfo: {
+              contentUrl: backgroundMedia.uri,
+              contentType: 'image/jpeg',
+            },
+          });
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Google Cast loadMedia error:', err);
+    }
+  }, 120);
+};
+
 export default {
   SafeCastButton,
   useCastSessionSafe,
   useCastStateSafe,
   showCastDialogSafe,
+  castMediaSlide,
   isGoogleCastAvailable,
 };
+

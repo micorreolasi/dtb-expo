@@ -10,7 +10,7 @@ import { WebView } from 'react-native-webview';
 import * as Sharing from 'expo-sharing';
 import Slider from '@react-native-community/slider';
 import ExternalDisplay, { useExternalDisplay } from '../utils/safeExternalDisplay';
-import { SafeCastButton, useCastSessionSafe } from '../utils/safeGoogleCast';
+import { SafeCastButton, useCastSessionSafe, castMediaSlide } from '../utils/safeGoogleCast';
 import fullBible from '../bible.json';
 import ServiceOrderModule from '../components/ServiceOrderModule';
 import {
@@ -547,6 +547,19 @@ export default function VisualDTBApp() {
   const isCastConnected = !!castSession;
   const hasExternalDisplay = hasHardwareDisplay || isCastConnected;
   const [externalDisplayEnabled, setExternalDisplayEnabled] = useState<boolean>(true);
+
+  // Transmisión activa de diapositivas a Chromecast vía loadMedia
+  useEffect(() => {
+    if (Platform.OS === 'android' && castSession) {
+      castMediaSlide(castSession, {
+        isBlackout,
+        projection,
+        backgroundMedia,
+        textColor,
+        textHasBackground,
+      });
+    }
+  }, [castSession, isBlackout, projection, backgroundMedia, textColor, textHasBackground]);
 
   // Document State & Picking Lock
   const isPickingDocRef = useRef<boolean>(false);
