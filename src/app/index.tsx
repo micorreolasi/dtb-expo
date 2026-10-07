@@ -10,6 +10,7 @@ import { WebView } from 'react-native-webview';
 import * as Sharing from 'expo-sharing';
 import Slider from '@react-native-community/slider';
 import ExternalDisplay, { useExternalDisplay } from '../utils/safeExternalDisplay';
+import { SafeCastButton, useCastSessionSafe } from '../utils/safeGoogleCast';
 import fullBible from '../bible.json';
 import ServiceOrderModule from '../components/ServiceOrderModule';
 import {
@@ -539,9 +540,12 @@ export default function VisualDTBApp() {
   const [textColor, setTextColor] = useState<string>('#ffffff');
   const [textHasBackground, setTextHasBackground] = useState<boolean>(false);
 
-  // External Display State
+  // External Display & Wireless Cast State
   const externalScreens = useExternalDisplay();
-  const hasExternalDisplay = Object.keys(externalScreens).length > 0;
+  const castSession = useCastSessionSafe();
+  const hasHardwareDisplay = Object.keys(externalScreens).length > 0;
+  const isCastConnected = !!castSession;
+  const hasExternalDisplay = hasHardwareDisplay || isCastConnected;
   const [externalDisplayEnabled, setExternalDisplayEnabled] = useState<boolean>(true);
 
   // Document State & Picking Lock
@@ -1813,10 +1817,12 @@ export default function VisualDTBApp() {
                   <Ionicons name={externalDisplayEnabled ? "toggle" : "toggle-outline"} size={32} color={externalDisplayEnabled ? "#3b82f6" : "#64748b"} />
                 </TouchableOpacity>
              </View>
-             {hasExternalDisplay ? (
-                <Text style={{color: '#10b981', marginTop: 10, padding: 10, backgroundColor: '#064e3b', borderRadius: 6}}>Pantalla externa detectada.</Text>
+             {hasHardwareDisplay ? (
+                <Text style={{color: '#10b981', marginTop: 10, padding: 10, backgroundColor: '#064e3b', borderRadius: 6}}>Pantalla externa detectada (HDMI / Miracast).</Text>
+             ) : isCastConnected ? (
+                <Text style={{color: '#38bdf8', marginTop: 10, padding: 10, backgroundColor: '#0c4a6e', borderRadius: 6}}>Chromecast conectado activamente vía Google Cast.</Text>
              ) : (
-                <Text style={{color: '#f59e0b', marginTop: 10, padding: 10, backgroundColor: '#78350f', borderRadius: 6}}>No se detecta pantalla externa. Conecta por HDMI o AirPlay.</Text>
+                <Text style={{color: '#f59e0b', marginTop: 10, padding: 10, backgroundColor: '#78350f', borderRadius: 6}}>No se detecta pantalla externa. Conecta por HDMI, Miracast o Chromecast.</Text>
              )}
           </ScrollView>
         );
@@ -2141,10 +2147,26 @@ export default function VisualDTBApp() {
               <Ionicons name="tv" size={isCompact ? 12 : 16} color="#fff" />
               <Text style={[{color: '#fff', fontWeight: 'bold', fontSize: 13}, isCompact && { fontSize: 10 }]}>Presentar</Text>
             </TouchableOpacity>
+
+            {/* Google Cast Button (Android only) */}
+            {Platform.OS === 'android' && (
+              <SafeCastButton isCompact={isCompact} tintColor={isCastConnected ? "#38bdf8" : "#ffffff"} />
+            )}
+
             {!isCompact && (
               <View style={styles.tvStatusBadge}>
-                <Ionicons name="tv-outline" size={16} color="#94a3b8" />
-                <Text style={styles.tvStatusText}>Preview Mode</Text>
+                <Ionicons 
+                  name={hasExternalDisplay ? "tv" : "tv-outline"} 
+                  size={16} 
+                  color={hasHardwareDisplay ? "#10b981" : isCastConnected ? "#38bdf8" : "#94a3b8"} 
+                />
+                <Text style={[
+                  styles.tvStatusText, 
+                  hasHardwareDisplay && { color: '#10b981' },
+                  isCastConnected && { color: '#38bdf8' }
+                ]}>
+                  {hasHardwareDisplay ? "TV Conectada" : isCastConnected ? "Cast Activo" : "Preview Mode"}
+                </Text>
               </View>
             )}
           </View>

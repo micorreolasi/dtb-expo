@@ -35,7 +35,8 @@
         }
       ],
       "expo-video",
-      "expo-sharing"
+      "expo-sharing",
+      "./plugins/withAndroidOnlyGoogleCast.js"
     ],
     "experiments": {
       "typedRoutes": true,
