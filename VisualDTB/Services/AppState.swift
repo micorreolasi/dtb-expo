@@ -84,8 +84,8 @@ final class AppState: ObservableObject {
 
     func selectBackground(_ bg: MediaBackground) {
         backgroundMedia = BackgroundMedia(type: bg.type, uri: bg.uri)
-        mediaPreviewUri = bg.uri
-        mediaPreviewType = bg.type
+        mediaPreviewUri = nil
+        mediaPreviewType = nil
     }
 
     // MARK: - Documentos y Navegación de Hojas

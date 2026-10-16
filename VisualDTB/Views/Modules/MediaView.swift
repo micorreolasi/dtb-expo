@@ -27,6 +27,7 @@ struct MediaView: View {
 
                     Button {
                         appState.backgroundMedia = nil
+                        appState.mediaPreviewUri = nil
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "moon.fill")
@@ -275,11 +276,13 @@ struct MediaView: View {
                     isPaused: false,
                     nativeControls: true
                 )
+                .id("preview-vid-\(uri)")
                 .frame(maxWidth: .infinity)
                 .frame(height: 180)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 ProjectionImageView(uri: uri, contentMode: .fit)
+                    .id("preview-img-\(uri)")
                     .frame(maxWidth: .infinity)
                     .frame(height: 180)
                     .background(Color.black)
@@ -311,15 +314,23 @@ struct MediaView: View {
 
                 // 2. Guardar y poner de Fondo
                 Button {
+                    var thumb = uri
+                    if isVideo {
+                        let resolvedPath = BackgroundStorage.resolveURI(uri)
+                        if let generated = BackgroundStorage.generateVideoThumbnail(for: URL(fileURLWithPath: resolvedPath)) {
+                            thumb = generated
+                        }
+                    }
                     let newBg = MediaBackground(
                         id: "custom-\(Int(Date().timeIntervalSince1970 * 1000))",
                         type: isVideo ? .video : .image,
-                        thumbnail: uri,
+                        thumbnail: thumb,
                         uri: uri,
                         name: isVideo ? "Video Guardado" : "Fondo Guardado"
                     )
                     appState.addCustomBackground(newBg)
                     appState.selectBackground(newBg)
+                    appState.mediaPreviewUri = nil
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "photo.fill")

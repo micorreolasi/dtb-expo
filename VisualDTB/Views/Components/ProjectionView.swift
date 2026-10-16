@@ -19,6 +19,7 @@ struct ProjectionView: View {
                         switch bg.type {
                         case .image:
                             ProjectionImageView(uri: bg.uri, contentMode: .fill)
+                                .id("bg-img-\(bg.uri)")
                         case .video:
                             SafeVideoPlayerView(
                                 uri: bg.uri,
@@ -29,6 +30,7 @@ struct ProjectionView: View {
                                 isPaused: appState.isPaused,
                                 nativeControls: false
                             )
+                            .id("bg-vid-\(bg.uri)")
                         }
                     }
 
@@ -76,6 +78,7 @@ struct ProjectionView: View {
 
         case .image:
             ProjectionImageView(uri: appState.projection.content, contentMode: .fit)
+                .id("proj-img-\(appState.projection.content)")
 
         case .video:
             let shouldMute = (mode == .miniPreview) && (appState.hasExternalDisplay && appState.externalDisplayEnabled)
@@ -88,6 +91,7 @@ struct ProjectionView: View {
                 isPaused: appState.isPaused,
                 nativeControls: mode == .presentation
             )
+            .id("proj-vid-\(appState.projection.content)")
 
         case .web:
             WebViewRepresentable(urlString: appState.projection.content)

@@ -8,43 +8,85 @@ final class ExternalDisplayManager: ObservableObject {
 
     @Published var isExternalScreenConnected: Bool = false
     private var externalWindow: UIWindow? = nil
+    private weak var currentAppState: AppState? = nil
     private var cancellables = Set<AnyCancellable>()
 
     private init() {
-        checkScreens()
+        checkScreensAndScenes()
+
+        // 1. Notificaciones modernas de escenas (iOS 13-18 / iPadOS)
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(screenDidConnect(_:)),
+            selector: #selector(handleSceneNotification(_:)),
+            name: UIScene.didActivateNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSceneNotification(_:)),
+            name: UIScene.willConnectNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSceneNotification(_:)),
+            name: UIScene.didDisconnectNotification,
+            object: nil
+        )
+
+        // 2. Notificaciones de pantallas clásicas como respaldo
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleScreenNotification(_:)),
             name: UIScreen.didConnectNotification,
             object: nil
         )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(screenDidDisconnect(_:)),
+            selector: #selector(handleScreenNotification(_:)),
             name: UIScreen.didDisconnectNotification,
             object: nil
         )
     }
 
-    private func checkScreens() {
-        if UIScreen.screens.count > 1 {
-            isExternalScreenConnected = true
-        } else {
-            isExternalScreenConnected = false
+    private func checkScreensAndScenes() {
+        let externalScene = findExternalWindowScene()
+        let hasExternalScreen = (externalScene != nil) || (UIScreen.screens.first(where: { $0 != UIScreen.main }) != nil)
+        isExternalScreenConnected = hasExternalScreen
+        currentAppState?.hasExternalDisplay = hasExternalScreen
+    }
+
+    private func findExternalWindowScene() -> UIWindowScene? {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            if windowScene.session.role == .windowExternalDisplayNonInteractive ||
+               windowScene.session.role.rawValue == "UIWindowExternalDisplaySessionRole" {
+                return windowScene
+            }
+            if windowScene.screen != UIScreen.main {
+                return windowScene
+            }
+        }
+        return nil
+    }
+
+    @objc private func handleSceneNotification(_ notification: Notification) {
+        checkScreensAndScenes()
+        if let appState = currentAppState {
+            syncWith(appState: appState)
         }
     }
 
-    @objc private func screenDidConnect(_ notification: Notification) {
-        checkScreens()
-    }
-
-    @objc private func screenDidDisconnect(_ notification: Notification) {
-        checkScreens()
-        tearDownExternalWindow()
+    @objc private func handleScreenNotification(_ notification: Notification) {
+        checkScreensAndScenes()
+        if let appState = currentAppState {
+            syncWith(appState: appState)
+        }
     }
 
     func syncWith(appState: AppState) {
-        appState.hasExternalDisplay = isExternalScreenConnected
+        self.currentAppState = appState
+        checkScreensAndScenes()
 
         if isExternalScreenConnected && appState.externalDisplayEnabled {
             setupExternalWindow(with: appState)
@@ -54,20 +96,47 @@ final class ExternalDisplayManager: ObservableObject {
     }
 
     private func setupExternalWindow(with appState: AppState) {
-        guard let externalScreen = UIScreen.screens.first(where: { $0 != UIScreen.main }) else {
+        let externalScene = findExternalWindowScene()
+        let externalScreen = externalScene?.screen ?? UIScreen.screens.first(where: { $0 != UIScreen.main })
+
+        guard let targetScreen = externalScreen else {
             tearDownExternalWindow()
             return
         }
 
-        if externalWindow == nil || externalWindow?.screen != externalScreen {
-            let window = UIWindow(frame: externalScreen.bounds)
-            window.screen = externalScreen
-            let rootView = ExternalProjectionContainerView()
-                .environmentObject(appState)
-            window.rootViewController = UIHostingController(rootView: rootView)
-            window.isHidden = false
-            self.externalWindow = window
+        // Si ya tenemos una ventana creada para esta escena/pantalla activa, aseguramos visibilidad
+        if let currentWindow = externalWindow {
+            if let externalScene, currentWindow.windowScene == externalScene {
+                currentWindow.isHidden = false
+                return
+            } else if currentWindow.screen == targetScreen {
+                currentWindow.isHidden = false
+                return
+            }
         }
+
+        tearDownExternalWindow()
+
+        let window: UIWindow
+        if let externalScene {
+            window = UIWindow(windowScene: externalScene)
+            window.frame = externalScene.coordinateSpace.bounds
+        } else {
+            window = UIWindow(frame: targetScreen.bounds)
+            window.screen = targetScreen
+        }
+
+        let rootView = ExternalProjectionContainerView()
+            .environmentObject(appState)
+        let hostingController = UIHostingController(rootView: rootView)
+        hostingController.view.backgroundColor = .black
+        window.rootViewController = hostingController
+        window.backgroundColor = .black
+        window.isHidden = false
+
+        self.externalWindow = window
+        self.isExternalScreenConnected = true
+        appState.hasExternalDisplay = true
     }
 
     private func tearDownExternalWindow() {

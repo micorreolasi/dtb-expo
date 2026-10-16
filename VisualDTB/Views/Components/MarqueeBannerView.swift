@@ -54,7 +54,6 @@ struct MarqueeBannerView: View {
         guard !text.isEmpty && textWidth > 0 else { return }
         offset = containerWidth
 
-        let distance = containerWidth + textWidth + 50
         let baseDuration = speed.duration
 
         withAnimation(.linear(duration: baseDuration)) {

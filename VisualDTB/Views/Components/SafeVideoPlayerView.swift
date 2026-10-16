@@ -19,8 +19,10 @@ struct SafeVideoPlayerView: View {
             if let player {
                 if nativeControls {
                     VideoPlayer(player: player)
+                        .id(ObjectIdentifier(player))
                 } else {
                     CustomAVPlayerRepresentable(player: player, videoGravity: contentFit == .fill ? .resizeAspectFill : .resizeAspect)
+                        .id(ObjectIdentifier(player))
                 }
             } else {
                 VStack(spacing: 8) {
@@ -34,14 +36,13 @@ struct SafeVideoPlayerView: View {
             }
         }
         .onAppear {
-            setupPlayer()
+            setupPlayer(for: uri)
         }
         .onDisappear {
             tearDownPlayer()
         }
-        .onChange(of: uri) { _ in
-            tearDownPlayer()
-            setupPlayer()
+        .onChange(of: uri) { newUri in
+            setupPlayer(for: newUri)
         }
         .onChange(of: muted) { isMuted in
             player?.isMuted = isMuted
@@ -63,17 +64,21 @@ struct SafeVideoPlayerView: View {
             return URL(string: string)
         }
         let cleanPath: String = {
-            if string.hasPrefix("file://"), let u = URL(string: string) {
-                return u.path
+            if string.hasPrefix("file://") {
+                if let u = URL(string: string) {
+                    return u.path
+                }
+                return String(string.dropFirst(7))
             }
             return string
-        }()
+        }().removingPercentEncoding ?? string
         let resolved = BackgroundStorage.resolveURI(cleanPath)
         return URL(fileURLWithPath: resolved)
     }
 
-    private func setupPlayer() {
-        guard let url = resolveVideoURL(from: uri) else { return }
+    private func setupPlayer(for targetUri: String) {
+        tearDownPlayer()
+        guard let url = resolveVideoURL(from: targetUri) else { return }
         let playerItem = AVPlayerItem(url: url)
         let avPlayer = AVPlayer(playerItem: playerItem)
         avPlayer.isMuted = muted
@@ -103,6 +108,7 @@ struct SafeVideoPlayerView: View {
             endObserver = nil
         }
         player?.pause()
+        player?.replaceCurrentItem(with: nil)
         player = nil
     }
 }
@@ -119,7 +125,9 @@ private struct CustomAVPlayerRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PlayerUIView, context: Context) {
-        uiView.playerLayer.player = player
+        if uiView.playerLayer.player !== player {
+            uiView.playerLayer.player = player
+        }
         uiView.playerLayer.videoGravity = videoGravity
     }
 
