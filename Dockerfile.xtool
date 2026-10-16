@@ -1,0 +1,14 @@
+FROM swift:6.0
+
+RUN apt-get update && \
+    apt-get install -y curl ca-certificates libfuse2 cpio xz-utils git && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN curl -sSfL "https://github.com/xtool-org/xtool/releases/latest/download/xtool-x86_64.AppImage" -o /usr/local/bin/xtool-appimage && \
+    chmod +x /usr/local/bin/xtool-appimage && \
+    cd /tmp && /usr/local/bin/xtool-appimage --appimage-extract && \
+    mv /tmp/squashfs-root /opt/xtool && \
+    ln -s /opt/xtool/usr/bin/xtool /usr/local/bin/xtool && \
+    rm -f /usr/local/bin/xtool-appimage
+
+WORKDIR /workspace

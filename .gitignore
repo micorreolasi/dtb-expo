@@ -1,0 +1,6 @@
+.build/
+.sourcekit-lsp/
+.swiftpm/
+xtool/
+.DS_Store
+Payload/
