@@ -66,14 +66,14 @@ struct DocumentsView: View {
                             Spacer()
                         }
 
-                        // Botones de Navegación de Hojas / Diapositivas
-                        HStack(spacing: 12) {
+                        // Indicador de hoja y Botones de Navegación de Hojas / Diapositivas
+                        HStack(spacing: 8) {
                             Button {
                                 appState.handlePrevSlide()
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: "chevron.left")
-                                    Text("Hoja Anterior")
+                                    Text("Anterior")
                                 }
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(Theme.blue)
@@ -82,12 +82,20 @@ struct DocumentsView: View {
                                 .chip(fill: Theme.blue.opacity(0.12), border: Theme.blue.opacity(0.3), radius: 8)
                             }
                             .buttonStyle(.plain)
+                            .disabled(appState.documentCurrentPage <= 0)
+
+                            Text("Hoja \(appState.documentCurrentPage + 1) de \(max(1, appState.documentTotalPages))")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Theme.textBright)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(Theme.border.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
 
                             Button {
                                 appState.handleNextSlide()
                             } label: {
                                 HStack(spacing: 6) {
-                                    Text("Hoja Siguiente")
+                                    Text("Siguiente")
                                     Image(systemName: "chevron.right")
                                 }
                                 .font(.system(size: 13, weight: .semibold))
@@ -97,6 +105,7 @@ struct DocumentsView: View {
                                 .chip(fill: Theme.blue.opacity(0.12), border: Theme.blue.opacity(0.3), radius: 8)
                             }
                             .buttonStyle(.plain)
+                            .disabled(appState.documentCurrentPage + 1 >= appState.documentTotalPages)
                         }
 
                         HStack(spacing: 10) {

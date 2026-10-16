@@ -16,23 +16,23 @@ struct DynamicProjectionTextView: View {
             } else {
                 let padHoriz: CGFloat = {
                     switch mode {
-                    case .miniPreview: return isCompact ? 6 : 10
-                    case .presentation: return isCompact ? 20 : 44
-                    case .external: return 60
+                    case .miniPreview: return isCompact ? 6 : 8
+                    case .presentation: return isCompact ? 16 : 24
+                    case .external: return 40
                     }
                 }()
                 let padTop: CGFloat = {
                     switch mode {
                     case .miniPreview: return isCompact ? 4 : 6
-                    case .presentation: return isCompact ? 16 : 28
-                    case .external: return 40
+                    case .presentation: return isCompact ? 16 : 24
+                    case .external: return 32
                     }
                 }()
                 let padBottom: CGFloat = {
                     switch mode {
                     case .miniPreview: return isCompact ? 4 : 6
-                    case .presentation: return isCompact ? 75 : 85
-                    case .external: return 50
+                    case .presentation: return isCompact ? 16 : 24
+                    case .external: return 32
                     }
                 }()
 
@@ -61,7 +61,7 @@ struct DynamicProjectionTextView: View {
                                 .font(.system(size: config.refFontSize, weight: .bold))
                                 .foregroundStyle(refColor)
                                 .multilineTextAlignment(.center)
-                                .shadow(color: .black.opacity(0.85), radius: 8, x: -1, y: 1)
+                                .shadow(color: .black.opacity(0.9), radius: 8, x: -1, y: 1)
                                 .minimumScaleFactor(0.7)
                                 .allowsTightening(true)
                                 .frame(maxWidth: safeW)
@@ -72,7 +72,7 @@ struct DynamicProjectionTextView: View {
                             .foregroundStyle(textColor)
                             .multilineTextAlignment(.center)
                             .lineSpacing(max(0, config.lineHeight - config.fontSize))
-                            .shadow(color: .black.opacity(0.85), radius: 10, x: -1, y: 1)
+                            .shadow(color: .black.opacity(0.9), radius: 10, x: -1, y: 1)
                             .minimumScaleFactor(0.65)
                             .allowsTightening(true)
                             .frame(maxWidth: safeW)
@@ -87,6 +87,7 @@ struct DynamicProjectionTextView: View {
                     }
                     Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .padding(.horizontal, padHoriz)
                 .padding(.top, padTop)
                 .padding(.bottom, padBottom)

@@ -137,16 +137,19 @@ enum BackgroundStorage {
         }
     }
 
-    /// Genera una miniatura JPEG rápida de un video
+    /// Genera una miniatura JPEG rápida de un video (optimizado para videos cortos o largos de 30-40+ min)
     static func generateVideoThumbnail(for videoURL: URL) -> String? {
-        let asset = AVURLAsset(url: videoURL)
+        let asset = AVURLAsset(url: videoURL, options: [AVURLAssetPreferPreciseDurationAndTimingKey: false])
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 480, height: 270)
+        generator.maximumSize = CGSize(width: 400, height: 225)
+        // No forzar búsqueda precisa de fotograma exacto para que sea casi instantáneo
+        generator.requestedTimeToleranceBefore = CMTime(seconds: 2, preferredTimescale: 60)
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 60)
         let time = CMTime(seconds: 1, preferredTimescale: 60)
         if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
             let uiImage = UIImage(cgImage: cgImage)
-            if let data = uiImage.jpegData(compressionQuality: 0.8) {
+            if let data = uiImage.jpegData(compressionQuality: 0.75) {
                 let thumbURL = MediaStorage.mediaDirectory.appendingPathComponent("\(UUID().uuidString)_thumb.jpg")
                 try? data.write(to: thumbURL, options: .atomic)
                 return thumbURL.path
@@ -254,8 +257,30 @@ struct PickedMovie: Transferable {
         } importing: { received in
             let ext = received.file.pathExtension.isEmpty ? "mov" : received.file.pathExtension
             let destination = MediaStorage.mediaDirectory.appendingPathComponent("\(UUID().uuidString).\(ext)")
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try? FileManager.default.removeItem(at: destination)
+            }
             try FileManager.default.copyItem(at: received.file, to: destination)
             return PickedMovie(url: destination)
+        }
+    }
+}
+
+/// Fallback para videos con UTType .video
+struct PickedVideo: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .video) { movie in
+            SentTransferredFile(movie.url)
+        } importing: { received in
+            let ext = received.file.pathExtension.isEmpty ? "mp4" : received.file.pathExtension
+            let destination = MediaStorage.mediaDirectory.appendingPathComponent("\(UUID().uuidString).\(ext)")
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try? FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: received.file, to: destination)
+            return PickedVideo(url: destination)
         }
     }
 }

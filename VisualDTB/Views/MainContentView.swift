@@ -138,30 +138,31 @@ struct MainContentView: View {
     // Área de Vista Previa de TV
     private var previewArea: some View {
         VStack(spacing: layout.isCompact ? 2 : 10) {
-            // Header del preview
+            // Header del preview con resolución real de la TV
             HStack(spacing: 4) {
-                Image(systemName: "tv")
+                Image(systemName: "tv.fill")
                     .font(.system(size: layout.isCompact ? 10 : 13))
-                    .foregroundStyle(Theme.muted)
-                Text("PROYECCIÓN")
+                    .foregroundStyle(appState.hasExternalDisplay ? Theme.green : Theme.muted)
+                Text("TV: \(appState.externalDisplayName)")
                     .font(.system(size: layout.isCompact ? 8 : 11, weight: .bold))
-                    .foregroundStyle(Theme.muted)
+                    .foregroundStyle(appState.hasExternalDisplay ? Theme.green : Theme.muted)
+                    .lineLimit(1)
                 Spacer()
             }
 
-            // Pantalla 16:9 con la proyección en vivo
+            // Pantalla con la relación de aspecto real de la TV (HDMI / Cable)
             ZStack {
                 Color.black
 
                 ProjectionView(mode: .miniPreview)
             }
-            .aspectRatio(16/9, contentMode: .fit)
+            .aspectRatio(appState.externalDisplayAspectRatio, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .scaleEffect(appState.isFullscreen ? 1.08 : 1.0)
             .shadow(color: appState.isFullscreen ? Theme.green.opacity(0.4) : Color.clear, radius: 15)
 
             if !layout.isCompact {
-                Text(appState.isPaused ? "PAUSADO" : "Vista previa de TV")
+                Text(appState.isPaused ? "PAUSADO" : (appState.hasExternalDisplay ? "Reflejando en Pantalla Externa" : "Vista Previa de Salida"))
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.dim)
             }

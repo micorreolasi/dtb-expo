@@ -92,12 +92,17 @@ final class AppState: ObservableObject {
     @Published var isReadingDocument: Bool = false
     @Published var currentDocName: String = ""
     @Published var currentDocPath: String = ""
+    @Published var documentCurrentPage: Int = 0
+    @Published var documentTotalPages: Int = 1
     @Published var documentPageAction: DocumentNavAction? = nil
     @Published var documentNavTriggerId: UUID = UUID()
 
     var isDocumentActive: Bool {
         projection.type == .document || projection.type == .pdf || (!currentDocPath.isEmpty && isReadingDocument)
     }
+
+    // MARK: - Sincronización Web
+    @Published var webScrollRatio: CGFloat = 0.0
 
     // MARK: - Órdenes de Culto (Servicios)
     @Published var services: [ServiceOrder] = DefaultData.services
@@ -108,12 +113,18 @@ final class AppState: ObservableObject {
     // MARK: - Pantalla Externa (AirPlay / HDMI)
     @Published var externalDisplayEnabled: Bool = true
     @Published var hasExternalDisplay: Bool = false
+    @Published var externalDisplayResolution: CGSize = CGSize(width: 1920, height: 1080)
+    @Published var externalDisplayAspectRatio: CGFloat = 16.0 / 9.0
+    @Published var externalDisplayName: String = "1920x1080 (16:9)"
 
     // MARK: - Alertas
     @Published var currentAlert: AppAlert? = nil
 
     // MARK: - Inicialización
     init() {
+        // Inicializar sesión de audio para sonido directo en iPad y TV HDMI
+        AudioSessionManager.configurePlaybackSession()
+
         // Cargar Biblia por defecto desde el bundle o JSON
         let bundled = BibleLoader.loadBundled()
         let initialBooks = bundled.isEmpty ? [] : bundled
@@ -188,6 +199,9 @@ final class AppState: ObservableObject {
     func handleNextSlide() {
         if isDocumentActive {
             playlist = nil
+            if documentCurrentPage + 1 < documentTotalPages {
+                documentCurrentPage += 1
+            }
             documentPageAction = .next
             documentNavTriggerId = UUID()
             return
@@ -201,6 +215,9 @@ final class AppState: ObservableObject {
     func handlePrevSlide() {
         if isDocumentActive {
             playlist = nil
+            if documentCurrentPage > 0 {
+                documentCurrentPage -= 1
+            }
             documentPageAction = .prev
             documentNavTriggerId = UUID()
             return
@@ -288,8 +305,20 @@ final class AppState: ObservableObject {
 
     func deleteService(serviceId: String) {
         services.removeAll(where: { $0.id == serviceId })
-        if activeServiceId == serviceId, let first = services.first {
-            activeServiceId = first.id
+        if services.isEmpty {
+            let defaultSrv = ServiceOrder(
+                id: "srv-\(Int(Date().timeIntervalSince1970 * 1000))",
+                name: "Culto General",
+                date: "Domingo",
+                defaultBackgroundUri: nil,
+                defaultBackgroundType: nil,
+                items: []
+            )
+            services = [defaultSrv]
+        }
+        if activeServiceId == serviceId || !services.contains(where: { $0.id == activeServiceId }) {
+            activeServiceId = services.first?.id ?? ""
+            activeServiceItemId = nil
         }
         persistServices()
     }

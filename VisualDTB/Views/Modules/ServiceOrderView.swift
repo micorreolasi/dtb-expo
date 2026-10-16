@@ -77,30 +77,52 @@ struct ServiceOrderView: View {
             HStack(spacing: 8) {
                 ForEach(appState.services) { srv in
                     let isSelected = srv.id == currentService?.id
-                    Button {
-                        appState.activeServiceId = srv.id
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 13))
-                                .foregroundStyle(isSelected ? .white : Theme.muted)
-                            Text(srv.name)
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(isSelected ? .white : Theme.muted)
-                                .lineLimit(1)
-                            Text("(\(srv.items.count))")
-                                .font(.system(size: 10))
-                                .foregroundStyle(isSelected ? Color(hex: "#93c5fd") : Theme.dim)
+                    HStack(spacing: 6) {
+                        Button {
+                            appState.activeServiceId = srv.id
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(isSelected ? .white : Theme.muted)
+                                Text(srv.name)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(isSelected ? .white : Theme.muted)
+                                    .lineLimit(1)
+                                Text("(\(srv.items.count))")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(isSelected ? Color(hex: "#93c5fd") : Theme.dim)
+                            }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .chip(
-                            fill: isSelected ? Color(hex: "#1e40af") : Theme.panel,
-                            border: isSelected ? Theme.blue : Theme.border,
-                            radius: 8
-                        )
+                        .buttonStyle(.plain)
+
+                        // Botón directo para eliminar culto
+                        Button {
+                            confirmDeleteService(srv)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(isSelected ? Color(hex: "#fca5a5") : Theme.dim)
+                                .padding(4)
+                                .background(Color.black.opacity(0.2), in: Circle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.leading, 12)
+                    .padding(.trailing, 8)
+                    .padding(.vertical, 6)
+                    .chip(
+                        fill: isSelected ? Color(hex: "#1e40af") : Theme.panel,
+                        border: isSelected ? Theme.blue : Theme.border,
+                        radius: 8
+                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            confirmDeleteService(srv)
+                        } label: {
+                            Label("Eliminar Culto \"\(srv.name)\"", systemImage: "trash")
+                        }
+                    }
                 }
 
                 // Botón Nuevo Culto
@@ -154,7 +176,7 @@ struct ServiceOrderView: View {
 
             Spacer()
 
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 // Selector de fondo general del culto
                 Button {
                     bgTarget = .service
@@ -188,26 +210,22 @@ struct ServiceOrderView: View {
                 }
                 .buttonStyle(.plain)
 
-                // Eliminar culto si hay más de 1
-                if appState.services.count > 1 {
-                    Button {
-                        appState.currentAlert = AppAlert(
-                            title: "Eliminar Orden de Culto",
-                            message: "¿Deseas eliminar \"\(service.name)\"?",
-                            confirmTitle: "Eliminar",
-                            onConfirm: {
-                                appState.deleteService(serviceId: service.id)
-                            }
-                        )
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Theme.red)
-                            .padding(8)
-                            .chip(fill: Theme.red.opacity(0.12), border: Theme.red.opacity(0.25), radius: 6)
+                // Botón Eliminar Culto siempre accesible
+                Button {
+                    confirmDeleteService(service)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 12))
+                        Text("Eliminar Culto")
+                            .font(.system(size: 11, weight: .bold))
                     }
-                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.red)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .chip(fill: Theme.red.opacity(0.12), border: Theme.red.opacity(0.3), radius: 6)
                 }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 14)
@@ -819,6 +837,17 @@ struct ServiceOrderView: View {
         case .item(let itemId):
             appState.updateItemBackground(serviceId: srv.id, itemId: itemId, bg: bg)
         }
+    }
+
+    private func confirmDeleteService(_ service: ServiceOrder) {
+        appState.currentAlert = AppAlert(
+            title: "Eliminar Orden de Culto",
+            message: "¿Estás seguro de que deseas eliminar \"\(service.name)\"? Esta acción borrará los momentos y cantos planificados en este culto.",
+            confirmTitle: "Eliminar",
+            onConfirm: {
+                appState.deleteService(serviceId: service.id)
+            }
+        )
     }
 }
 

@@ -8,10 +8,31 @@ struct MediaView: View {
 
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
     @State private var showFileImporter = false
+    @State private var isImporting = false
+    @State private var importStatus = ""
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                // Indicador de importación de video largo
+                if isImporting {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                            .tint(.white)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Procesando video largo...")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                            Text(importStatus.isEmpty ? "Copiando y optimizando para vista previa..." : importStatus)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color(hex: "#93c5fd"))
+                        }
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(Theme.blue.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+                }
+
                 // Cabecera: Título y Botón "Fondo a Negro"
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
@@ -351,14 +372,45 @@ struct MediaView: View {
 
     // MARK: - Importación desde Fotos (PhotosPicker)
     private func handlePhotoPicked(_ item: PhotosPickerItem) async {
+        await MainActor.run {
+            isImporting = true
+            importStatus = "Extrayendo archivo multimedia de la fototeca..."
+        }
+        defer {
+            Task { @MainActor in
+                isImporting = false
+                selectedPhotoItem = nil
+            }
+        }
+
+        AudioSessionManager.ensureActive()
+
         do {
+            // 1. Intentar cargar como video mediante PickedMovie (.movie)
             if let movie = try? await item.loadTransferable(type: PickedMovie.self) {
                 let uri = movie.url.path
                 await MainActor.run {
                     appState.mediaPreviewUri = uri
                     appState.mediaPreviewType = .video
                 }
-            } else if let data = try await item.loadTransferable(type: Data.self) {
+                return
+            }
+
+            // 2. Intentar cargar como video mediante PickedVideo (.video)
+            if let video = try? await item.loadTransferable(type: PickedVideo.self) {
+                let uri = video.url.path
+                await MainActor.run {
+                    appState.mediaPreviewUri = uri
+                    appState.mediaPreviewType = .video
+                }
+                return
+            }
+
+            // 3. Importación como imagen
+            await MainActor.run {
+                importStatus = "Guardando imagen..."
+            }
+            if let data = try await item.loadTransferable(type: Data.self) {
                 let savedURL = try MediaStorage.saveImage(data, fileExtension: "jpg")
                 let uri = savedURL.path
                 await MainActor.run {
@@ -368,21 +420,35 @@ struct MediaView: View {
             }
         } catch {
             await MainActor.run {
-                appState.currentAlert = AppAlert(title: "Error al importar", message: error.localizedDescription)
+                appState.currentAlert = AppAlert(title: "Error al importar medio", message: error.localizedDescription)
             }
         }
-        selectedPhotoItem = nil
     }
 
     // MARK: - Importación desde Archivos del iPad (Disco / iCloud / USB)
     private func handleFileImport(_ result: Result<[URL], Error>) {
-        do {
-            guard let selectedURL = try result.get().first else { return }
-            let imported = try MediaStorage.importMediaFile(from: selectedURL)
-            appState.mediaPreviewUri = imported.savedPath
-            appState.mediaPreviewType = imported.isVideo ? .video : .image
-        } catch {
-            appState.currentAlert = AppAlert(title: "Error al importar archivo", message: error.localizedDescription)
+        AudioSessionManager.ensureActive()
+        isImporting = true
+        importStatus = "Importando archivo del iPad..."
+
+        Task.detached(priority: .userInitiated) {
+            defer {
+                Task { @MainActor in
+                    self.isImporting = false
+                }
+            }
+            do {
+                guard let selectedURL = try result.get().first else { return }
+                let imported = try MediaStorage.importMediaFile(from: selectedURL)
+                await MainActor.run {
+                    self.appState.mediaPreviewUri = imported.savedPath
+                    self.appState.mediaPreviewType = imported.isVideo ? .video : .image
+                }
+            } catch {
+                await MainActor.run {
+                    self.appState.currentAlert = AppAlert(title: "Error al importar archivo", message: error.localizedDescription)
+                }
+            }
         }
     }
 }

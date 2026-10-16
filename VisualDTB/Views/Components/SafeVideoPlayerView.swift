@@ -36,16 +36,22 @@ struct SafeVideoPlayerView: View {
             }
         }
         .onAppear {
+            AudioSessionManager.ensureActive()
             setupPlayer(for: uri)
         }
         .onDisappear {
             tearDownPlayer()
         }
         .onChange(of: uri) { newUri in
+            AudioSessionManager.ensureActive()
             setupPlayer(for: newUri)
         }
         .onChange(of: muted) { isMuted in
             player?.isMuted = isMuted
+            if !isMuted {
+                AudioSessionManager.ensureActive()
+                player?.volume = volume
+            }
         }
         .onChange(of: volume) { vol in
             player?.volume = muted ? 0 : vol
@@ -54,6 +60,7 @@ struct SafeVideoPlayerView: View {
             if paused {
                 player?.pause()
             } else {
+                AudioSessionManager.ensureActive()
                 player?.play()
             }
         }
@@ -79,10 +86,18 @@ struct SafeVideoPlayerView: View {
     private func setupPlayer(for targetUri: String) {
         tearDownPlayer()
         guard let url = resolveVideoURL(from: targetUri) else { return }
-        let playerItem = AVPlayerItem(url: url)
+        
+        AudioSessionManager.ensureActive()
+        
+        let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: false])
+        let playerItem = AVPlayerItem(asset: asset)
+        // Permitir buffering para videos largos de 30-40+ min
+        playerItem.preferredForwardBufferDuration = 5.0
+        
         let avPlayer = AVPlayer(playerItem: playerItem)
         avPlayer.isMuted = muted
         avPlayer.volume = muted ? 0 : volume
+        avPlayer.automaticallyWaitsToMinimizeStalling = true
 
         if loop {
             avPlayer.actionAtItemEnd = .none

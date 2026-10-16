@@ -51,9 +51,26 @@ final class ExternalDisplayManager: ObservableObject {
 
     private func checkScreensAndScenes() {
         let externalScene = findExternalWindowScene()
-        let hasExternalScreen = (externalScene != nil) || (UIScreen.screens.first(where: { $0 != UIScreen.main }) != nil)
+        let externalScreen = externalScene?.screen ?? UIScreen.screens.first(where: { $0 != UIScreen.main })
+        let hasExternalScreen = (externalScene != nil) || (externalScreen != nil)
         isExternalScreenConnected = hasExternalScreen
-        currentAppState?.hasExternalDisplay = hasExternalScreen
+        
+        if let appState = currentAppState {
+            appState.hasExternalDisplay = hasExternalScreen
+            if let target = externalScreen {
+                let pixelSize = target.currentMode?.size ?? target.bounds.size
+                let width = max(320, pixelSize.width)
+                let height = max(240, pixelSize.height)
+                let ratio = width / height
+                appState.externalDisplayResolution = CGSize(width: width, height: height)
+                appState.externalDisplayAspectRatio = ratio
+                appState.externalDisplayName = "\(Int(width))×\(Int(height))"
+            } else {
+                appState.externalDisplayResolution = CGSize(width: 1920, height: 1080)
+                appState.externalDisplayAspectRatio = 16.0 / 9.0
+                appState.externalDisplayName = "1920×1080 (16:9)"
+            }
+        }
     }
 
     private func findExternalWindowScene() -> UIWindowScene? {
@@ -125,6 +142,13 @@ final class ExternalDisplayManager: ObservableObject {
             window = UIWindow(frame: targetScreen.bounds)
             window.screen = targetScreen
         }
+
+        let pixelSize = targetScreen.currentMode?.size ?? targetScreen.bounds.size
+        let width = max(320, pixelSize.width)
+        let height = max(240, pixelSize.height)
+        appState.externalDisplayResolution = CGSize(width: width, height: height)
+        appState.externalDisplayAspectRatio = width / height
+        appState.externalDisplayName = "\(Int(width))×\(Int(height))"
 
         let rootView = ExternalProjectionContainerView()
             .environmentObject(appState)

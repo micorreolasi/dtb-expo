@@ -19,6 +19,8 @@ struct ProjectionView: View {
                         switch bg.type {
                         case .image:
                             ProjectionImageView(uri: bg.uri, contentMode: .fill)
+                                .frame(width: proxy.size.width, height: proxy.size.height)
+                                .clipped()
                                 .id("bg-img-\(bg.uri)")
                         case .video:
                             SafeVideoPlayerView(
@@ -30,12 +32,14 @@ struct ProjectionView: View {
                                 isPaused: appState.isPaused,
                                 nativeControls: false
                             )
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .clipped()
                             .id("bg-vid-\(bg.uri)")
                         }
                     }
 
                     // 2. Contenido Proyectado Activo
-                    contentView(isCompact: isCompact)
+                    contentView(isCompact: isCompact, width: proxy.size.width, height: proxy.size.height)
 
                     // 3. Atenuador de Brillo
                     if appState.brightness < 100 {
@@ -64,7 +68,7 @@ struct ProjectionView: View {
     }
 
     @ViewBuilder
-    private func contentView(isCompact: Bool) -> some View {
+    private func contentView(isCompact: Bool, width: CGFloat, height: CGFloat) -> some View {
         switch appState.projection.type {
         case .text:
             DynamicProjectionTextView(
@@ -78,6 +82,8 @@ struct ProjectionView: View {
 
         case .image:
             ProjectionImageView(uri: appState.projection.content, contentMode: .fit)
+                .frame(width: width, height: height)
+                .clipped()
                 .id("proj-img-\(appState.projection.content)")
 
         case .video:
@@ -91,13 +97,15 @@ struct ProjectionView: View {
                 isPaused: appState.isPaused,
                 nativeControls: mode == .presentation
             )
+            .frame(width: width, height: height)
+            .clipped()
             .id("proj-vid-\(appState.projection.content)")
 
         case .web:
-            WebViewRepresentable(urlString: appState.projection.content)
+            WebViewRepresentable(urlString: appState.projection.content, mode: mode)
 
         case .pdf, .document:
-            PDFDocumentView(uri: appState.projection.content)
+            PDFDocumentView(uri: appState.projection.content, mode: mode)
         }
     }
 }
