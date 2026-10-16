@@ -97,6 +97,10 @@ final class AppState: ObservableObject {
     @Published var documentPageAction: DocumentNavAction? = nil
     @Published var documentNavTriggerId: UUID = UUID()
 
+    // MARK: - Zoom y Desplazamiento Sincronizado de Documentos (Preview -> TV)
+    @Published var documentZoomScale: CGFloat = 1.0
+    @Published var documentScrollOffsetRatio: CGPoint = .zero
+
     var isDocumentActive: Bool {
         projection.type == .document || projection.type == .pdf || (!currentDocPath.isEmpty && isReadingDocument)
     }

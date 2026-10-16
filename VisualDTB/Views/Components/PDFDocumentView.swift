@@ -13,6 +13,8 @@ struct PDFDocumentView: View {
                 url: docURL,
                 currentPage: $appState.documentCurrentPage,
                 totalPages: $appState.documentTotalPages,
+                zoomScale: $appState.documentZoomScale,
+                scrollOffsetRatio: $appState.documentScrollOffsetRatio,
                 navAction: appState.documentPageAction,
                 navTriggerId: appState.documentNavTriggerId,
                 mode: mode
@@ -47,23 +49,38 @@ private struct PDFKitRepresentable: UIViewRepresentable {
     let url: URL
     @Binding var currentPage: Int
     @Binding var totalPages: Int
+    @Binding var zoomScale: CGFloat
+    @Binding var scrollOffsetRatio: CGPoint
     var navAction: DocumentNavAction?
     var navTriggerId: UUID?
     let mode: ProjectionMode
 
-    class Coordinator: NSObject {
+    class Coordinator: NSObject, UIScrollViewDelegate {
         var parent: PDFKitRepresentable
         var lastTriggerId: UUID?
         var isSelfUpdating = false
-        var observer: Any?
+        var observers: [Any] = []
+        weak var internalScrollView: UIScrollView? = nil
 
         init(_ parent: PDFKitRepresentable) {
             self.parent = parent
         }
 
         deinit {
-            if let observer {
-                NotificationCenter.default.removeObserver(observer)
+            for obs in observers {
+                NotificationCenter.default.removeObserver(obs)
+            }
+        }
+
+        // Captura el scroll cuando hay zoom en la vista previa del iPad
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            guard parent.mode != .external, !isSelfUpdating else { return }
+            let maxW = max(1, scrollView.contentSize.width - scrollView.bounds.width)
+            let maxH = max(1, scrollView.contentSize.height - scrollView.bounds.height)
+            let ratioX = max(0.0, min(1.0, scrollView.contentOffset.x / maxW))
+            let ratioY = max(0.0, min(1.0, scrollView.contentOffset.y / maxH))
+            DispatchQueue.main.async {
+                self.parent.scrollOffsetRatio = CGPoint(x: ratioX, y: ratioY)
             }
         }
     }
@@ -77,9 +94,11 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         pdfView.autoScales = true
         pdfView.displayMode = .singlePage
         pdfView.displayDirection = .horizontal
-        // usePageViewController(false) elimina el bug en iOS donde la página queda a la mitad y regresa a la 1
+        // usePageViewController(false) elimina el bug de salto/rebote de hojas en iOS
         pdfView.usePageViewController(false)
         pdfView.backgroundColor = .black
+        pdfView.minScaleFactor = 0.2
+        pdfView.maxScaleFactor = 6.0
 
         if let doc = PDFDocument(url: url) {
             pdfView.document = doc
@@ -91,9 +110,10 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             }
         }
 
-        // Si es la vista previa interactiva o presentación en iPad, escuchar cuando el usuario cambia de página con gestos
         let coordinator = context.coordinator
-        coordinator.observer = NotificationCenter.default.addObserver(
+
+        // 1. Notificación de cambio de página
+        let pageObs = NotificationCenter.default.addObserver(
             forName: .PDFViewPageChanged,
             object: pdfView,
             queue: .main
@@ -105,6 +125,30 @@ private struct PDFKitRepresentable: UIViewRepresentable {
                 DispatchQueue.main.async {
                     coord.parent.currentPage = index
                 }
+            }
+        }
+        coordinator.observers.append(pageObs)
+
+        // 2. Notificación de cambio de escala (Pinch-to-zoom en la vista previa del iPad)
+        let scaleObs = NotificationCenter.default.addObserver(
+            forName: .PDFViewScaleChanged,
+            object: pdfView,
+            queue: .main
+        ) { [weak coordinator] _ in
+            guard let coord = coordinator, coord.parent.mode != .external, !coord.isSelfUpdating else { return }
+            let fit = max(0.001, pdfView.scaleFactorForSizeToFit)
+            let relativeZoom = pdfView.scaleFactor / fit
+            DispatchQueue.main.async {
+                coord.parent.zoomScale = max(1.0, relativeZoom)
+            }
+        }
+        coordinator.observers.append(scaleObs)
+
+        // Buscar el UIScrollView interno de PDFView para escuchar scroll de zoom en iPad
+        if let sv = findScrollView(in: pdfView) {
+            coordinator.internalScrollView = sv
+            if mode != .external {
+                sv.delegate = coordinator
             }
         }
 
@@ -142,7 +186,25 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             }
         }
 
-        // 3. Manejo de botones de navegación (Hoja siguiente / anterior)
+        // 3. Sincronizar zoom y desplazamiento en la TV externa
+        if mode == .external {
+            let baseFit = max(0.001, uiView.scaleFactorForSizeToFit)
+            let targetScale = baseFit * max(1.0, zoomScale)
+            if abs(uiView.scaleFactor - targetScale) > 0.03 {
+                uiView.scaleFactor = targetScale
+            }
+
+            if zoomScale > 1.05, let sv = findScrollView(in: uiView) {
+                let maxW = max(0, sv.contentSize.width - sv.bounds.width)
+                let maxH = max(0, sv.contentSize.height - sv.bounds.height)
+                let targetOffset = CGPoint(x: maxW * scrollOffsetRatio.x, y: maxH * scrollOffsetRatio.y)
+                if abs(sv.contentOffset.x - targetOffset.x) > 2 || abs(sv.contentOffset.y - targetOffset.y) > 2 {
+                    sv.setContentOffset(targetOffset, animated: false)
+                }
+            }
+        }
+
+        // 4. Botones de Hoja Siguiente / Hoja Anterior
         if let triggerId = navTriggerId, triggerId != context.coordinator.lastTriggerId {
             context.coordinator.lastTriggerId = triggerId
             context.coordinator.isSelfUpdating = true
@@ -167,5 +229,13 @@ private struct PDFKitRepresentable: UIViewRepresentable {
                 context.coordinator.isSelfUpdating = false
             }
         }
+    }
+
+    private func findScrollView(in view: UIView) -> UIScrollView? {
+        if let sv = view as? UIScrollView { return sv }
+        for sub in view.subviews {
+            if let found = findScrollView(in: sub) { return found }
+        }
+        return nil
     }
 }

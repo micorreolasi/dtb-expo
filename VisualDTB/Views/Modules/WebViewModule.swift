@@ -48,10 +48,9 @@ struct WebViewModule: View {
                 .background(Theme.panel)
                 .bottomBorder(Theme.border)
 
-                WebViewRepresentable(urlString: appState.projection.content) { newURL in
-                    if newURL != appState.projection.content && newURL.starts(with: "http") {
+                WebViewRepresentable(urlString: appState.projection.content, mode: .presentation) { newURL in
+                    if newURL.starts(with: "http") {
                         appState.webUrl = newURL
-                        appState.projection = ProjectionData(type: .web, content: newURL)
                     }
                 }
             }
