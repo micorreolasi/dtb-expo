@@ -95,6 +95,14 @@ enum DocumentNavAction: Equatable {
     case prev
 }
 
+enum WebControlCommand: Equatable {
+    case playPause
+    case rewind(seconds: Double)
+    case forward(seconds: Double)
+    case toggleMute
+    case reload
+}
+
 // MARK: - Canciones
 
 struct Stanza: Codable, Hashable {

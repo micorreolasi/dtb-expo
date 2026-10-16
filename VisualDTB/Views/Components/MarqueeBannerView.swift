@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MarqueeBannerView: View {
+    @EnvironmentObject var appState: AppState
     let text: String
     let repsString: String
     let speed: MarqueeSpeed
@@ -15,8 +16,11 @@ struct MarqueeBannerView: View {
     var body: some View {
         let isMini = mode == .miniPreview
         let isExternal = mode == .external
-        let height: CGFloat = isExternal ? 60 : (isMini && isCompact ? 28 : 50)
-        let fontSize: CGFloat = isExternal ? 28 : (isMini && isCompact ? 12 : 24)
+        let scale = appState.marqueeScale
+        let baseHeight: CGFloat = isExternal ? 60 : (isMini && isCompact ? 28 : 50)
+        let baseFontSize: CGFloat = isExternal ? 28 : (isMini && isCompact ? 12 : 24)
+        let height: CGFloat = max(20, baseHeight * scale)
+        let fontSize: CGFloat = max(10, baseFontSize * scale)
 
         GeometryReader { proxy in
             let containerWidth = proxy.size.width

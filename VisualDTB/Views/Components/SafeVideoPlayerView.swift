@@ -10,6 +10,7 @@ struct SafeVideoPlayerView: View {
     var isPaused: Bool = false
     var nativeControls: Bool = false
 
+    @EnvironmentObject var appState: AppState
     @State private var player: AVPlayer? = nil
     @State private var endObserver: Any? = nil
 
@@ -63,6 +64,15 @@ struct SafeVideoPlayerView: View {
                 AudioSessionManager.ensureActive()
                 player?.play()
             }
+        }
+        .onChange(of: appState.videoSeekTriggerId) { _ in
+            guard let player else { return }
+            let current = player.currentTime().seconds
+            let dur = player.currentItem?.duration.seconds ?? 0
+            let maxSec = (dur > 0 && !dur.isNaN) ? dur : 999999
+            let target = max(0, min(maxSec, current + appState.videoSeekDelta))
+            let time = CMTime(seconds: target, preferredTimescale: 600)
+            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
         }
     }
 

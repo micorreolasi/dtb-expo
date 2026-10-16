@@ -57,9 +57,48 @@ struct BottomToolbarView: View {
             }
             .buttonStyle(.plain)
 
+            // Botón -10s para Video o Web
+            if appState.projection.type == .video {
+                Button {
+                    appState.seekVideo(by: -10)
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "gobackward.10")
+                            .font(.system(size: layout.isCompact ? 9 : 11))
+                        Text("-10s")
+                            .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.blue)
+                    .padding(.horizontal, layout.isCompact ? 4 : 6)
+                    .frame(height: layout.isCompact ? 26 : 32)
+                    .chip(fill: Theme.blue.opacity(0.15), border: Theme.blue.opacity(0.3), radius: 6)
+                }
+                .buttonStyle(.plain)
+            } else if appState.projection.type == .web {
+                Button {
+                    appState.sendWebCommand(.rewind(seconds: 10))
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "gobackward.10")
+                            .font(.system(size: layout.isCompact ? 9 : 11))
+                        Text("-10s")
+                            .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.blue)
+                    .padding(.horizontal, layout.isCompact ? 4 : 6)
+                    .frame(height: layout.isCompact ? 26 : 32)
+                    .chip(fill: Theme.blue.opacity(0.15), border: Theme.blue.opacity(0.3), radius: 6)
+                }
+                .buttonStyle(.plain)
+            }
+
             // Pausar
             Button {
-                appState.isPaused.toggle()
+                if appState.projection.type == .web {
+                    appState.sendWebCommand(.playPause)
+                } else {
+                    appState.isPaused.toggle()
+                }
             } label: {
                 Image(systemName: "pause.fill")
                     .font(.system(size: layout.isCompact ? 11 : 14))
@@ -71,6 +110,41 @@ struct BottomToolbarView: View {
                     )
             }
             .buttonStyle(.plain)
+
+            // Botón +10s para Video o Web
+            if appState.projection.type == .video {
+                Button {
+                    appState.seekVideo(by: 10)
+                } label: {
+                    HStack(spacing: 2) {
+                        Text("+10s")
+                            .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                        Image(systemName: "goforward.10")
+                            .font(.system(size: layout.isCompact ? 9 : 11))
+                    }
+                    .foregroundStyle(Theme.blue)
+                    .padding(.horizontal, layout.isCompact ? 4 : 6)
+                    .frame(height: layout.isCompact ? 26 : 32)
+                    .chip(fill: Theme.blue.opacity(0.15), border: Theme.blue.opacity(0.3), radius: 6)
+                }
+                .buttonStyle(.plain)
+            } else if appState.projection.type == .web {
+                Button {
+                    appState.sendWebCommand(.forward(seconds: 10))
+                } label: {
+                    HStack(spacing: 2) {
+                        Text("+10s")
+                            .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                        Image(systemName: "goforward.10")
+                            .font(.system(size: layout.isCompact ? 9 : 11))
+                    }
+                    .foregroundStyle(Theme.blue)
+                    .padding(.horizontal, layout.isCompact ? 4 : 6)
+                    .frame(height: layout.isCompact ? 26 : 32)
+                    .chip(fill: Theme.blue.opacity(0.15), border: Theme.blue.opacity(0.3), radius: 6)
+                }
+                .buttonStyle(.plain)
+            }
 
             // Blackout
             Button {
@@ -147,6 +221,46 @@ struct BottomToolbarView: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: 6).stroke(Theme.border, lineWidth: 1)
                 }
+            }
+
+            // Controles de Zoom Rápido si hay Documento Activo
+            if appState.isDocumentActive {
+                HStack(spacing: 2) {
+                    Button {
+                        appState.zoomOutDocument()
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.system(size: layout.isCompact ? 9 : 11))
+                            .foregroundStyle(Theme.textSoft)
+                            .frame(width: layout.isCompact ? 22 : 26, height: layout.isCompact ? 26 : 32)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        if appState.documentZoomScale > 1.05 {
+                            appState.resetDocumentZoom()
+                        } else {
+                            appState.fitDocumentWidth()
+                        }
+                    } label: {
+                        Text("\(Int(appState.documentZoomScale * 100))%")
+                            .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                            .foregroundStyle(appState.documentZoomScale > 1.05 ? Theme.green : Theme.textSoft)
+                            .padding(.horizontal, 4)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        appState.zoomInDocument()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: layout.isCompact ? 9 : 11))
+                            .foregroundStyle(Theme.textSoft)
+                            .frame(width: layout.isCompact ? 22 : 26, height: layout.isCompact ? 26 : 32)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .background(Theme.border.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
             }
         }
     }

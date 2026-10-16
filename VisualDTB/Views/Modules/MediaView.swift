@@ -64,6 +64,11 @@ struct MediaView: View {
                     .buttonStyle(.plain)
                 }
 
+                // Panel de Control de Video Proyectado en Vivo en TV
+                if appState.projection.type == .video {
+                    activeVideoControlPanel
+                }
+
                 // Panel de Vista Previa y Acción (Proyectar Directo o Dejar como Fondo)
                 if let previewUri = appState.mediaPreviewUri {
                     previewSelectionPanel(uri: previewUri)
@@ -259,6 +264,98 @@ struct MediaView: View {
         }
     }
 
+    // MARK: - Panel de Control de Video Activo en Proyección Directa
+    private var activeVideoControlPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "tv.fill")
+                        .foregroundStyle(Theme.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Reproduciendo Video en Vivo en TV")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Theme.textBright)
+                        Text(appState.projection.title ?? "Video en Pantalla")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.green)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+                Button {
+                    appState.projection = .text("")
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "stop.fill")
+                        Text("Detener")
+                    }
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.red, in: RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Barra de controles de video (-10s, Pausa/Play, +10s)
+            HStack(spacing: 10) {
+                // Retroceder 10s
+                Button {
+                    appState.seekVideo(by: -10)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "gobackward.10")
+                            .font(.system(size: 14))
+                        Text("Retroceder 10s")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.blue)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .chip(fill: Theme.blue.opacity(0.15), border: Theme.blue.opacity(0.4), radius: 8)
+                }
+                .buttonStyle(.plain)
+
+                // Pausa / Play
+                Button {
+                    appState.toggleVideoPlayPause()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: appState.isPaused ? "play.fill" : "pause.fill")
+                            .font(.system(size: 16))
+                        Text(appState.isPaused ? "Reanudar" : "Pausar Video")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(appState.isPaused ? Theme.green : Theme.violet, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+
+                // Adelantar 10s
+                Button {
+                    appState.seekVideo(by: 10)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Adelantar 10s")
+                            .font(.system(size: 13, weight: .bold))
+                        Image(systemName: "goforward.10")
+                            .font(.system(size: 14))
+                    }
+                    .foregroundStyle(Theme.blue)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .chip(fill: Theme.blue.opacity(0.15), border: Theme.blue.opacity(0.4), radius: 8)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .chip(fill: Theme.panel, border: Theme.green.opacity(0.5), radius: 10)
+    }
+
     // MARK: - Panel de Previsualización y Elección de Acción
     private func previewSelectionPanel(uri: String) -> some View {
         let isVideo = appState.mediaPreviewType == .video
@@ -298,13 +395,61 @@ struct MediaView: View {
                     muted: true,
                     volume: 0.0,
                     loop: true,
-                    isPaused: false,
+                    isPaused: appState.isPaused,
                     nativeControls: true
                 )
                 .id("preview-vid-\(uri)")
                 .frame(maxWidth: .infinity)
                 .frame(height: 180)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                // Controles de Vista Previa para Video (-10s, Pausa/Play, +10s)
+                HStack(spacing: 10) {
+                    Button {
+                        appState.seekVideo(by: -10)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "gobackward.10")
+                            Text("-10s")
+                        }
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.blue)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .chip(fill: Theme.blue.opacity(0.12), border: Theme.blue.opacity(0.3), radius: 6)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        appState.toggleVideoPlayPause()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: appState.isPaused ? "play.fill" : "pause.fill")
+                            Text(appState.isPaused ? "Reproducir" : "Pausar")
+                        }
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(appState.isPaused ? Theme.green : Theme.border, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        appState.seekVideo(by: 10)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("+10s")
+                            Image(systemName: "goforward.10")
+                        }
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.blue)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .chip(fill: Theme.blue.opacity(0.12), border: Theme.blue.opacity(0.3), radius: 6)
+                    }
+                    .buttonStyle(.plain)
+                }
             } else {
                 ProjectionImageView(uri: uri, contentMode: .fit)
                     .id("preview-img-\(uri)")

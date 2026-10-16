@@ -48,16 +48,112 @@ struct WebViewModule: View {
                 .background(Theme.panel)
                 .bottomBorder(Theme.border)
 
+                // Barra de Controles de Video en TV y Vista Previa (YouTube y Web)
+                HStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "play.tv.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.green)
+                        Text("Controles de Video:")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.textBright)
+                    }
+
+                    Spacer()
+
+                    // Retroceder 10 segundos
+                    Button {
+                        appState.sendWebCommand(.rewind(seconds: 10))
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "gobackward.10")
+                                .font(.system(size: 11))
+                            Text("-10s")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.blue)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .chip(fill: Theme.blue.opacity(0.15), border: Theme.blue.opacity(0.4), radius: 6)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Pausa / Play
+                    Button {
+                        appState.sendWebCommand(.playPause)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "playpause.fill")
+                                .font(.system(size: 11))
+                            Text("Pausa / Play")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Theme.violet, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+
+                    // Adelantar 10 segundos
+                    Button {
+                        appState.sendWebCommand(.forward(seconds: 10))
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("+10s")
+                                .font(.system(size: 11, weight: .bold))
+                            Image(systemName: "goforward.10")
+                                .font(.system(size: 11))
+                        }
+                        .foregroundStyle(Theme.blue)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .chip(fill: Theme.blue.opacity(0.15), border: Theme.blue.opacity(0.4), radius: 6)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Silenciar / Mute
+                    Button {
+                        appState.sendWebCommand(.toggleMute)
+                    } label: {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textSoft)
+                            .frame(width: 28, height: 28)
+                            .chip(fill: Theme.border, radius: 6)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Recargar
+                    Button {
+                        appState.sendWebCommand(.reload)
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textSoft)
+                            .frame(width: 28, height: 28)
+                            .chip(fill: Theme.border, radius: 6)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Theme.bg)
+                .bottomBorder(Theme.border)
+
                 WebViewRepresentable(urlString: appState.projection.content, mode: .presentation) { newURL in
                     if newURL.starts(with: "http") {
                         appState.webUrl = newURL
+                        if appState.projection.content != newURL {
+                            appState.projection = ProjectionData(type: .web, content: newURL)
+                        }
                     }
                 }
             }
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    ModuleTitle(text: "Navegador Integrado")
+                    ModuleTitle(text: "Navegador Integrado y Videos Web")
 
                     HStack(spacing: 8) {
                         Image(systemName: "lock.fill")
@@ -65,7 +161,7 @@ struct WebViewModule: View {
                             .foregroundStyle(Theme.green)
 
                         DarkTextField(
-                            placeholder: "https://www.google.com",
+                            placeholder: "https://www.youtube.com",
                             text: $appState.webUrl,
                             fontSize: 15,
                             autocapitalize: false
@@ -74,16 +170,66 @@ struct WebViewModule: View {
                     .padding(12)
                     .chip(fill: Theme.panel, radius: 8)
 
+                    // Accesos rápidos populares (YouTube, etc.)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Accesos Rápidos:")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.muted)
+
+                        HStack(spacing: 10) {
+                            Button {
+                                appState.webUrl = "https://www.youtube.com"
+                                appState.projection = ProjectionData(type: .web, content: "https://www.youtube.com")
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "play.rectangle.fill")
+                                        .foregroundStyle(Theme.red)
+                                    Text("YouTube")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(Theme.textBright)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .chip(fill: Theme.panel, border: Theme.border, radius: 8)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                appState.webUrl = "https://www.google.com"
+                                appState.projection = ProjectionData(type: .web, content: "https://www.google.com")
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "magnifyingglass")
+                                        .foregroundStyle(Theme.blue)
+                                    Text("Google")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(Theme.textBright)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .chip(fill: Theme.panel, border: Theme.border, radius: 8)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
                     Button {
                         appState.projection = ProjectionData(type: .web, content: appState.webUrl)
                     } label: {
-                        VStack {
-                            Text("Proyectar y Visualizar Web")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(.white)
+                        VStack(spacing: 4) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "tv.and.mediabox")
+                                    .font(.system(size: 20))
+                                Text("Proyectar y Visualizar Web")
+                                    .font(.system(size: 18, weight: .bold))
+                            }
+                            Text("Sincronización automática de videos y controles en TV")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.white.opacity(0.8))
                         }
+                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 100)
+                        .frame(height: 90)
                         .background(Theme.green, in: RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)

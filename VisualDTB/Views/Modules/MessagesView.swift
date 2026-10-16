@@ -51,6 +51,78 @@ struct MessagesView: View {
                     }
                 }
 
+                // Control de Tamaño de la Cintilla en Tiempo Real (Grande / Pequeña)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        HStack(spacing: 5) {
+                            Image(systemName: "arrow.up.and.down.text.horizontal")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.blue)
+                            Text("Tamaño de la Cinta en Pantalla:")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Theme.textBright)
+                        }
+
+                        Spacer()
+
+                        Text("\(Int(appState.marqueeScale * 100))%")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.blue)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .chip(fill: Theme.blue.opacity(0.12), radius: 6)
+                    }
+
+                    // Slider de Tamaño en Tiempo Real
+                    HStack(spacing: 8) {
+                        Image(systemName: "textformat.size.smaller")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.muted)
+
+                        Slider(
+                            value: $appState.marqueeScale,
+                            in: 0.6...2.2,
+                            step: 0.05
+                        )
+                        .tint(Theme.blue)
+
+                        Image(systemName: "textformat.size.larger")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Theme.blue)
+                    }
+
+                    // Botones rápidos de tamaño predeterminado
+                    HStack(spacing: 6) {
+                        ForEach([
+                            ("Pequeña", 0.75),
+                            ("Normal", 1.0),
+                            ("Grande", 1.35),
+                            ("Extra Grande", 1.75)
+                        ], id: \.0) { name, scaleValue in
+                            let isSelected = abs(appState.marqueeScale - scaleValue) < 0.08
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    appState.marqueeScale = scaleValue
+                                }
+                            } label: {
+                                Text(name)
+                                    .font(.system(size: layout.isCompact ? 9 : 11, weight: .bold))
+                                    .foregroundStyle(isSelected ? .white : Theme.muted)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .chip(
+                                        fill: isSelected ? Theme.blue : Theme.panel,
+                                        border: isSelected ? Theme.lightBlue : Theme.border,
+                                        radius: 6
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Theme.panel, in: RoundedRectangle(cornerRadius: 8))
+
                 // Selector de Repeticiones
                 HStack(spacing: 8) {
                     Text("Repeticiones:")

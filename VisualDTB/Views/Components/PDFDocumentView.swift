@@ -75,12 +75,14 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         // Captura el scroll cuando hay zoom en la vista previa del iPad
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             guard parent.mode != .external, !isSelfUpdating else { return }
-            let maxW = max(1, scrollView.contentSize.width - scrollView.bounds.width)
-            let maxH = max(1, scrollView.contentSize.height - scrollView.bounds.height)
-            let ratioX = max(0.0, min(1.0, scrollView.contentOffset.x / maxW))
-            let ratioY = max(0.0, min(1.0, scrollView.contentOffset.y / maxH))
-            DispatchQueue.main.async {
-                self.parent.scrollOffsetRatio = CGPoint(x: ratioX, y: ratioY)
+            if scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating {
+                let maxW = max(1, scrollView.contentSize.width - scrollView.bounds.width)
+                let maxH = max(1, scrollView.contentSize.height - scrollView.bounds.height)
+                let ratioX = max(0.0, min(1.0, scrollView.contentOffset.x / maxW))
+                let ratioY = max(0.0, min(1.0, scrollView.contentOffset.y / maxH))
+                DispatchQueue.main.async {
+                    self.parent.scrollOffsetRatio = CGPoint(x: ratioX, y: ratioY)
+                }
             }
         }
     }
@@ -136,10 +138,12 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             queue: .main
         ) { [weak coordinator] _ in
             guard let coord = coordinator, coord.parent.mode != .external, !coord.isSelfUpdating else { return }
-            let fit = max(0.001, pdfView.scaleFactorForSizeToFit)
-            let relativeZoom = pdfView.scaleFactor / fit
-            DispatchQueue.main.async {
-                coord.parent.zoomScale = max(1.0, relativeZoom)
+            if let sv = coord.internalScrollView, (sv.isZooming || sv.isZoomBouncing) {
+                let fit = max(0.001, pdfView.scaleFactorForSizeToFit)
+                let relativeZoom = pdfView.scaleFactor / fit
+                DispatchQueue.main.async {
+                    coord.parent.zoomScale = max(1.0, relativeZoom)
+                }
             }
         }
         coordinator.observers.append(scaleObs)
@@ -186,20 +190,30 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             }
         }
 
-        // 3. Sincronizar zoom y desplazamiento en la TV externa
-        if mode == .external {
-            let baseFit = max(0.001, uiView.scaleFactorForSizeToFit)
-            let targetScale = baseFit * max(1.0, zoomScale)
-            if abs(uiView.scaleFactor - targetScale) > 0.03 {
-                uiView.scaleFactor = targetScale
+        // 3. Sincronizar zoom y desplazamiento idéntico entre la TV externa y la Vista Previa
+        let baseFit = max(0.001, uiView.scaleFactorForSizeToFit)
+        let targetScale = baseFit * max(1.0, zoomScale)
+        if abs(uiView.scaleFactor - targetScale) > 0.02 {
+            context.coordinator.isSelfUpdating = true
+            uiView.scaleFactor = targetScale
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                context.coordinator.isSelfUpdating = false
             }
+        }
 
-            if zoomScale > 1.05, let sv = findScrollView(in: uiView) {
-                let maxW = max(0, sv.contentSize.width - sv.bounds.width)
-                let maxH = max(0, sv.contentSize.height - sv.bounds.height)
+        if let sv = findScrollView(in: uiView) {
+            let maxW = max(0, sv.contentSize.width - sv.bounds.width)
+            let maxH = max(0, sv.contentSize.height - sv.bounds.height)
+            if maxW > 0 || maxH > 0 {
                 let targetOffset = CGPoint(x: maxW * scrollOffsetRatio.x, y: maxH * scrollOffsetRatio.y)
-                if abs(sv.contentOffset.x - targetOffset.x) > 2 || abs(sv.contentOffset.y - targetOffset.y) > 2 {
-                    sv.setContentOffset(targetOffset, animated: false)
+                if mode == .external || (!sv.isDragging && !sv.isDecelerating) {
+                    if abs(sv.contentOffset.x - targetOffset.x) > 2 || abs(sv.contentOffset.y - targetOffset.y) > 2 {
+                        context.coordinator.isSelfUpdating = true
+                        sv.setContentOffset(targetOffset, animated: false)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                            context.coordinator.isSelfUpdating = false
+                        }
+                    }
                 }
             }
         }

@@ -46,8 +46,8 @@ struct WebViewRepresentable: UIViewRepresentable {
             loadURL(in: uiView)
         }
 
-        // 2. Si es la TV externa (modo .external), reflejar el scroll y el zoom que el operador hace en el iPad
-        if mode == .external {
+        // 2. Si es la TV externa (modo .external) o vista previa sin tocar, sincronizar el scroll y el zoom
+        if mode == .external || (mode == .miniPreview && !uiView.scrollView.isTracking && !uiView.scrollView.isDragging) {
             let sv = uiView.scrollView
 
             // Sincronizar zoom en PPTX / Web si aplica
@@ -68,21 +68,107 @@ struct WebViewRepresentable: UIViewRepresentable {
             }
         }
 
-        // 3. Manejo de botones de salto de página (Hoja Siguiente / Anterior)
+        // 3. Manejo de botones de salto de página (Hoja Siguiente / Anterior en PPTX / Keynote / Documentos Web)
         if let triggerId = navTriggerId, triggerId != context.coordinator.lastTriggerId {
             context.coordinator.lastTriggerId = triggerId
             let sv = uiView.scrollView
             let pageHeight = max(200, sv.bounds.height * 0.85)
             let currentOffset = sv.contentOffset.y
+            let maxOffset = max(0, sv.contentSize.height - sv.bounds.height)
 
-            if navAction == .next {
-                let maxOffset = max(0, sv.contentSize.height - sv.bounds.height)
-                let nextOffset = min(maxOffset, currentOffset + pageHeight)
-                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: nextOffset), animated: true)
-            } else if navAction == .prev {
-                let prevOffset = max(0, currentOffset - pageHeight)
-                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: prevOffset), animated: true)
+            if maxOffset > 0 {
+                let targetOffset: CGFloat
+                if navAction == .next {
+                    targetOffset = min(maxOffset, currentOffset + pageHeight)
+                } else if navAction == .prev {
+                    targetOffset = max(0, currentOffset - pageHeight)
+                } else {
+                    targetOffset = currentOffset
+                }
+                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetOffset), animated: true)
+                if mode != .external {
+                    let ratio = max(0.0, min(1.0, targetOffset / maxOffset))
+                    DispatchQueue.main.async {
+                        self.appState.webScrollRatio = ratio
+                    }
+                }
             }
+        }
+
+        // 4. Ejecución de Controles de Video Web (YouTube y reproductores HTML5)
+        if context.coordinator.lastWebActionId != appState.webControlTriggerId, let cmd = appState.webControlCommand {
+            context.coordinator.lastWebActionId = appState.webControlTriggerId
+            executeWebCommand(cmd, in: uiView)
+        }
+    }
+
+    private func executeWebCommand(_ command: WebControlCommand, in webView: WKWebView) {
+        switch command {
+        case .playPause:
+            let js = """
+            (function() {
+                var vids = document.querySelectorAll('video');
+                if (vids.length > 0) {
+                    var anyPlaying = false;
+                    for (var i = 0; i < vids.length; i++) {
+                        if (!vids[i].paused && !vids[i].ended && vids[i].readyState > 2) {
+                            anyPlaying = true;
+                            break;
+                        }
+                    }
+                    for (var i = 0; i < vids.length; i++) {
+                        if (anyPlaying) {
+                            vids[i].pause();
+                        } else {
+                            vids[i].play();
+                        }
+                    }
+                    return;
+                }
+                var playBtn = document.querySelector('.ytp-play-button') || document.querySelector('button[aria-label="Play"]') || document.querySelector('button[aria-label="Pause"]');
+                if (playBtn) playBtn.click();
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
+        case .rewind(let seconds):
+            let js = """
+            (function() {
+                var vids = document.querySelectorAll('video');
+                for (var i = 0; i < vids.length; i++) {
+                    vids[i].currentTime = Math.max(0, (vids[i].currentTime || 0) - \(seconds));
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
+        case .forward(let seconds):
+            let js = """
+            (function() {
+                var vids = document.querySelectorAll('video');
+                for (var i = 0; i < vids.length; i++) {
+                    var maxD = vids[i].duration || 999999;
+                    vids[i].currentTime = Math.min(maxD, (vids[i].currentTime || 0) + \(seconds));
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
+        case .toggleMute:
+            let js = """
+            (function() {
+                var vids = document.querySelectorAll('video');
+                for (var i = 0; i < vids.length; i++) {
+                    vids[i].muted = !vids[i].muted;
+                }
+                var muteBtn = document.querySelector('.ytp-mute-button');
+                if (muteBtn) muteBtn.click();
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
+        case .reload:
+            webView.reload()
         }
     }
 
@@ -109,6 +195,7 @@ struct WebViewRepresentable: UIViewRepresentable {
         var parent: WebViewRepresentable
         var lastTriggerId: UUID? = nil
         var lastLoadedURL: String? = nil
+        var lastWebActionId: UUID? = nil
 
         init(_ parent: WebViewRepresentable) {
             self.parent = parent
@@ -116,7 +203,7 @@ struct WebViewRepresentable: UIViewRepresentable {
 
         // Captura el scroll y zoom en el iPad y lo envía a AppState para reflejarlo en el TV
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            guard parent.mode != .external else { return }
+            guard parent.mode != .external, (scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating) else { return }
             let maxOffset = max(1, scrollView.contentSize.height - scrollView.bounds.height)
             let ratio = max(0.0, min(1.0, scrollView.contentOffset.y / maxOffset))
             DispatchQueue.main.async {

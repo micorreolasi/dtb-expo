@@ -31,6 +31,13 @@ final class AppState: ObservableObject {
 
     // MARK: - Web
     @Published var webUrl: String = "https://www.google.com"
+    @Published var webControlCommand: WebControlCommand? = nil
+    @Published var webControlTriggerId: UUID = UUID()
+
+    func sendWebCommand(_ command: WebControlCommand) {
+        webControlCommand = command
+        webControlTriggerId = UUID()
+    }
 
     // MARK: - Mensajes / Cintillo (Marquee)
     @Published var messageInput: String = ""
@@ -38,6 +45,7 @@ final class AppState: ObservableObject {
     @Published var activeMarquee: String = ""
     @Published var marqueeSpeed: MarqueeSpeed = .normal
     @Published var marqueeTriggerId: UUID = UUID()
+    @Published var marqueeScale: Double = 1.0
 
     // MARK: - Canciones
     @Published var songsList: [Song] = DefaultData.songs
@@ -63,6 +71,19 @@ final class AppState: ObservableObject {
     @Published var mediaPreviewUri: String? = nil
     @Published var mediaPreviewType: MediaKind? = nil
     @Published var customBackgrounds: [MediaBackground] = BackgroundStorage.load()
+
+    // Control de reproducción de video en vivo (proyección directa y preview)
+    @Published var videoSeekDelta: Double = 0
+    @Published var videoSeekTriggerId: UUID = UUID()
+
+    func seekVideo(by seconds: Double) {
+        videoSeekDelta = seconds
+        videoSeekTriggerId = UUID()
+    }
+
+    func toggleVideoPlayPause() {
+        isPaused.toggle()
+    }
 
     func addCustomBackground(_ bg: MediaBackground) {
         if !customBackgrounds.contains(where: { $0.id == bg.id || $0.uri == bg.uri }) {
@@ -100,6 +121,36 @@ final class AppState: ObservableObject {
     // MARK: - Zoom y Desplazamiento Sincronizado de Documentos (Preview -> TV)
     @Published var documentZoomScale: CGFloat = 1.0
     @Published var documentScrollOffsetRatio: CGPoint = .zero
+
+    func setDocumentZoom(_ zoom: CGFloat) {
+        documentZoomScale = max(0.5, min(5.0, zoom))
+    }
+
+    func zoomInDocument() {
+        documentZoomScale = min(5.0, documentZoomScale + 0.25)
+    }
+
+    func zoomOutDocument() {
+        documentZoomScale = max(1.0, documentZoomScale - 0.25)
+    }
+
+    func resetDocumentZoom() {
+        documentZoomScale = 1.0
+        documentScrollOffsetRatio = .zero
+    }
+
+    func fitDocumentWidth() {
+        // En pantallas panorámicas (16:9), un documento en vertical necesita ~2.2x de zoom para llenar el ancho
+        documentZoomScale = 2.2
+        documentScrollOffsetRatio = CGPoint(x: 0.5, y: documentScrollOffsetRatio.y)
+    }
+
+    func goToDocumentPage(_ page: Int) {
+        guard page >= 0, page < documentTotalPages else { return }
+        documentCurrentPage = page
+        documentPageAction = nil
+        documentNavTriggerId = UUID()
+    }
 
     var isDocumentActive: Bool {
         projection.type == .document || projection.type == .pdf || (!currentDocPath.isEmpty && isReadingDocument)
