@@ -277,22 +277,26 @@ struct MediaView: View {
 
                 Button {
                     appState.mediaPreviewUri = nil
+                    appState.mediaPreviewType = nil
+                    appState.playlist = nil
+                    appState.projection = .text("")
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Theme.muted)
-                        .padding(4)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(6)
+                        .background(Color.black.opacity(0.6), in: Circle())
                 }
                 .buttonStyle(.plain)
             }
 
-            // Vista previa del medio
+            // Vista previa del medio (en silencio para no interrumpir el culto)
             if isVideo {
                 SafeVideoPlayerView(
                     uri: uri,
                     contentFit: .fit,
-                    muted: false,
-                    volume: 1.0,
+                    muted: true,
+                    volume: 0.0,
                     loop: true,
                     isPaused: false,
                     nativeControls: true
