@@ -195,7 +195,7 @@ struct TVControlPanelView: View {
                     .foregroundStyle(Theme.blue)
             }
 
-            // Fila de Hoja / Estrofa / Diapositiva Anterior y Siguiente
+            // Fila de Anterior y Siguiente
             HStack(spacing: layout.isCompact ? 4 : 6) {
                 Button {
                     appState.handlePrevSlide()
@@ -203,8 +203,8 @@ struct TVControlPanelView: View {
                     HStack(spacing: 3) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: layout.isCompact ? 10 : 12, weight: .bold))
-                        Text(appState.isDocumentActive ? "Hoja Ant." : "Estrofa Ant.")
-                            .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                        Text("Anterior")
+                            .font(.system(size: layout.isCompact ? 9 : 11, weight: .bold))
                     }
                     .foregroundStyle(canGoPrev ? Theme.blue : Theme.dim)
                     .frame(maxWidth: .infinity)
@@ -222,8 +222,8 @@ struct TVControlPanelView: View {
                     appState.handleNextSlide()
                 } label: {
                     HStack(spacing: 3) {
-                        Text(appState.isDocumentActive ? "Hoja Sig." : "Estrofa Sig.")
-                            .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                        Text("Siguiente")
+                            .font(.system(size: layout.isCompact ? 9 : 11, weight: .bold))
                         Image(systemName: "chevron.right")
                             .font(.system(size: layout.isCompact ? 10 : 12, weight: .bold))
                     }
@@ -624,7 +624,7 @@ struct TVControlPanelView: View {
             return "Hoja \(appState.documentCurrentPage + 1) / \(max(1, appState.documentTotalPages))"
         }
         if let pl = appState.playlist {
-            return "Estrofa \(pl.currentIndex + 1) / \(pl.items.count)"
+            return "\(pl.currentIndex + 1) / \(pl.items.count)"
         }
         if let srv = appState.services.first(where: { $0.id == appState.activeServiceId }),
            let curId = appState.activeServiceItemId,
