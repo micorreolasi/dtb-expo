@@ -13,7 +13,7 @@ struct VisualDTBApp: App {
                 MainContentView()
                     .environmentObject(appState)
                     .environment(\.layoutInfo, info)
-                    .preferredColorScheme(.dark)
+                    .preferredColorScheme(appState.isDarkMode ? .dark : .light)
                     .onAppear {
                         externalDisplay.syncWith(appState: appState)
                     }

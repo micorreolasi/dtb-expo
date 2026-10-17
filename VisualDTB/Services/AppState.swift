@@ -59,6 +59,13 @@ final class AppState: ObservableObject {
     @Published var marqueeTriggerId: UUID = UUID()
     @Published var marqueeScale: Double = 1.0
 
+    // MARK: - Tema de Interfaz (Modo Claro / Modo Oscuro)
+    @Published var isDarkMode: Bool = true {
+        didSet {
+            UserDefaults.standard.set(isDarkMode, forKey: "isDarkMode")
+        }
+    }
+
     // MARK: - Canciones
     @Published var songsList: [Song] = DefaultData.songs
     @Published var selectedSongId: String = ""
@@ -219,6 +226,11 @@ final class AppState: ObservableObject {
         if !saved.isEmpty {
             self.services = saved
             self.activeServiceId = saved[0].id
+        }
+
+        // Cargar preferencia de tema (Modo Claro / Modo Oscuro)
+        if UserDefaults.standard.object(forKey: "isDarkMode") != nil {
+            self.isDarkMode = UserDefaults.standard.bool(forKey: "isDarkMode")
         }
 
         setupTimer()

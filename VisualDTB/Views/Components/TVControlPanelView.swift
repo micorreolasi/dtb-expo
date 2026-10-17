@@ -335,7 +335,7 @@ struct TVControlPanelView: View {
                 }
                 .padding(.horizontal, 4)
                 .padding(.vertical, 3)
-                .chip(fill: Color(hex: "#0f172a"), radius: 6)
+                .chip(fill: Theme.bgDeep, radius: 6)
 
                 Spacer()
 
@@ -352,7 +352,7 @@ struct TVControlPanelView: View {
                     .padding(.horizontal, 5)
                     .padding(.vertical, 3)
                     .chip(
-                        fill: appState.textHasBackground ? Theme.blue.opacity(0.2) : Color(hex: "#0f172a"),
+                        fill: appState.textHasBackground ? Theme.blue.opacity(0.2) : Theme.bgDeep,
                         border: appState.textHasBackground ? Theme.blue : Theme.border,
                         radius: 4
                     )

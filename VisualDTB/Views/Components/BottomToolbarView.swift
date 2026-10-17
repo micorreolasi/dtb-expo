@@ -26,6 +26,11 @@ struct BottomToolbarView: View {
 
                 // 4. Fondo de Letra (ON / OFF)
                 textBackgroundGroup
+
+                separator
+
+                // 5. Modo Claro / Oscuro
+                themeToggleGroup
             }
             .padding(.horizontal, 10)
             .padding(.trailing, 20)
@@ -319,7 +324,7 @@ struct BottomToolbarView: View {
             }
             .padding(.horizontal, layout.isCompact ? 4 : 8)
             .padding(.vertical, 4)
-            .chip(fill: Color(hex: "#0f172a"), radius: 10)
+            .chip(fill: Theme.bgDeep, radius: 10)
 
             // Controles de Zoom de Letra en Tiempo Real (A- / 100% / A+)
             HStack(spacing: 2) {
@@ -368,7 +373,7 @@ struct BottomToolbarView: View {
             }
             .padding(.horizontal, 4)
             .padding(.vertical, 2)
-            .chip(fill: Color(hex: "#0f172a"), border: Theme.border, radius: 8)
+            .chip(fill: Theme.bgDeep, border: Theme.border, radius: 8)
         }
     }
 
@@ -387,9 +392,33 @@ struct BottomToolbarView: View {
             .padding(.horizontal, layout.isCompact ? 6 : 8)
             .padding(.vertical, layout.isCompact ? 4 : 6)
             .chip(
-                fill: appState.textHasBackground ? Theme.blue.opacity(0.18) : Color(hex: "#0f172a"),
+                fill: appState.textHasBackground ? Theme.blue.opacity(0.18) : Theme.bgDeep,
                 border: appState.textHasBackground ? Theme.blue : Theme.border,
                 radius: 4
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var themeToggleGroup: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                appState.isDarkMode.toggle()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: appState.isDarkMode ? "moon.stars.fill" : "sun.max.fill")
+                    .font(.system(size: layout.isCompact ? 11 : 13))
+                Text(appState.isDarkMode ? "Oscuro" : "Claro")
+                    .font(.system(size: layout.isCompact ? 10 : 12, weight: .bold))
+            }
+            .foregroundStyle(appState.isDarkMode ? Theme.sky : Theme.amber)
+            .padding(.horizontal, layout.isCompact ? 8 : 12)
+            .frame(height: layout.isCompact ? 26 : 32)
+            .chip(
+                fill: (appState.isDarkMode ? Theme.sky : Theme.amber).opacity(0.15),
+                border: (appState.isDarkMode ? Theme.sky : Theme.amber).opacity(0.35),
+                radius: 6
             )
         }
         .buttonStyle(.plain)

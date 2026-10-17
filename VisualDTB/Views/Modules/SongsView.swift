@@ -162,13 +162,13 @@ struct SongsView: View {
                                             }
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 6)
-                                            .chip(fill: isCurrentStanza ? Color(hex: "#1e3a8a") : Theme.panel, radius: 6)
+                                            .chip(fill: isCurrentStanza ? Theme.blue.opacity(0.35) : Theme.panel, radius: 6)
                                         }
                                         .buttonStyle(.plain)
                                     }
                                 }
                                 .padding(8)
-                                .background(Color(hex: "#0f172a"))
+                                .background(Theme.bgDeep)
                             }
                         }
                         .bottomBorder(Theme.panel)

@@ -112,7 +112,7 @@ struct ServiceOrderView: View {
                     .padding(.trailing, 8)
                     .padding(.vertical, 6)
                     .chip(
-                        fill: isSelected ? Color(hex: "#1e40af") : Theme.panel,
+                        fill: isSelected ? Theme.blue : Theme.panel,
                         border: isSelected ? Theme.blue : Theme.border,
                         radius: 8
                     )

@@ -74,6 +74,29 @@ struct MainContentView: View {
                 }
                 .buttonStyle(.plain)
 
+                // Botón de alternar Tema (Modo Claro / Modo Oscuro)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.isDarkMode.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: appState.isDarkMode ? "moon.stars.fill" : "sun.max.fill")
+                            .font(.system(size: layout.isCompact ? 11 : 13))
+                        Text(appState.isDarkMode ? "Oscuro" : "Claro")
+                            .font(.system(size: layout.isCompact ? 10 : 12, weight: .bold))
+                    }
+                    .foregroundStyle(appState.isDarkMode ? Theme.sky : Theme.amber)
+                    .padding(.horizontal, layout.isCompact ? 7 : 10)
+                    .padding(.vertical, layout.isCompact ? 5 : 6)
+                    .chip(
+                        fill: (appState.isDarkMode ? Theme.sky : Theme.amber).opacity(0.12),
+                        border: (appState.isDarkMode ? Theme.sky : Theme.amber).opacity(0.35),
+                        radius: layout.isCompact ? 6 : 8
+                    )
+                }
+                .buttonStyle(.plain)
+
                 // Insignia de estado de TV Externa
                 if !layout.isCompact {
                     HStack(spacing: 6) {

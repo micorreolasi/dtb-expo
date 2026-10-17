@@ -161,7 +161,7 @@ struct BibleView: View {
                                 }
                             }
                             .buttonStyle(.plain)
-                            .bottomBorder(Color(hex: "#0f172a"))
+                            .bottomBorder(Theme.border)
 
                             // Cuadrícula de Capítulos si está expandido
                             if isExpanded {
@@ -182,7 +182,7 @@ struct BibleView: View {
                                     }
                                 }
                                 .padding(8)
-                                .background(Color(hex: "#0f172a"))
+                                .background(Theme.bgDeep)
                             }
                         }
                     }
