@@ -14,13 +14,13 @@ struct MarqueeBannerView: View {
     @State private var completedCount: Int = 0
 
     var body: some View {
-        let isMini = mode == .miniPreview
-        let isExternal = mode == .external
+        let isExternalOrPresentation = (mode == .external || mode == .presentation)
         let scale = appState.marqueeScale
-        let baseHeight: CGFloat = isExternal ? 60 : (isMini && isCompact ? 28 : 50)
-        let baseFontSize: CGFloat = isExternal ? 28 : (isMini && isCompact ? 12 : 24)
-        let height: CGFloat = max(20, baseHeight * scale)
-        let fontSize: CGFloat = max(10, baseFontSize * scale)
+        // Altura y tamaño de tipografía óptimos para pantalla grande (TV / Proyector)
+        let baseHeight: CGFloat = isExternalOrPresentation ? 96 : (isCompact ? 32 : 60)
+        let baseFontSize: CGFloat = isExternalOrPresentation ? 44 : (isCompact ? 14 : 28)
+        let height: CGFloat = max(28, baseHeight * scale)
+        let fontSize: CGFloat = max(13, baseFontSize * scale)
 
         GeometryReader { proxy in
             let containerWidth = proxy.size.width
@@ -48,6 +48,9 @@ struct MarqueeBannerView: View {
             }
             .onChange(of: triggerId) { _ in
                 completedCount = 0
+                startAnimation(containerWidth: containerWidth, targetReps: targetReps)
+            }
+            .onChange(of: appState.marqueeScale) { _ in
                 startAnimation(containerWidth: containerWidth, targetReps: targetReps)
             }
         }

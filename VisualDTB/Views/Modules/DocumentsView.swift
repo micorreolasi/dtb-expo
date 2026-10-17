@@ -79,21 +79,42 @@ struct DocumentsView: View {
                             .buttonStyle(.plain)
                         }
 
-                        // Vista previa interactiva en tiempo real (proporción idéntica a la TV)
-                        ZStack {
-                            Color.black
-                            PDFDocumentView(
-                                uri: appState.currentDocPath.isEmpty ? appState.projection.content : appState.currentDocPath,
-                                mode: .miniPreview
-                            )
+                        // Emisión Principal en Pantalla de TV
+                        HStack(spacing: 12) {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(appState.hasExternalDisplay ? Theme.green.opacity(0.15) : Theme.blue.opacity(0.15))
+                                .frame(width: 44, height: 44)
+                                .overlay {
+                                    Image(systemName: "tv.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundStyle(appState.hasExternalDisplay ? Theme.green : Theme.blue)
+                                }
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(appState.hasExternalDisplay ? "Proyectando directamente en TV (\(appState.externalDisplayName))" : "Emisión Principal en TV / Pantalla Completa")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.white)
+                                Text("La TV es la salida principal. Los controles de zoom y hojas aplican directamente sobre la pantalla.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.textSoft)
+                            }
+
+                            Spacer()
+
+                            if appState.hasExternalDisplay {
+                                HStack(spacing: 4) {
+                                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                                    Text("EN VIVO")
+                                        .font(.system(size: 9, weight: .black))
+                                        .foregroundStyle(.white)
+                                }
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 4)
+                                .background(Theme.green.opacity(0.85), in: Capsule())
+                            }
                         }
-                        .aspectRatio(appState.externalDisplayAspectRatio, contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .frame(maxHeight: 220)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1)
-                        }
+                        .padding(10)
+                        .background(Theme.panel, in: RoundedRectangle(cornerRadius: 8))
 
                         // CONTROLES DE ZOOM EN TIEMPO REAL (Ideal para PDFs verticales o diapositivas)
                         VStack(alignment: .leading, spacing: 8) {

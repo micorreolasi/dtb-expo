@@ -154,7 +154,15 @@ final class AppState: ObservableObject {
     func fitDocumentWidth() {
         // En pantallas panorámicas (16:9), un documento en vertical necesita ~2.2x de zoom para llenar el ancho
         documentZoomScale = 2.2
-        documentScrollOffsetRatio = CGPoint(x: 0.5, y: documentScrollOffsetRatio.y)
+        documentScrollOffsetRatio = CGPoint(x: 0.5, y: 0.0)
+    }
+
+    func scrollDocumentUp() {
+        documentScrollOffsetRatio.y = max(0.0, documentScrollOffsetRatio.y - 0.15)
+    }
+
+    func scrollDocumentDown() {
+        documentScrollOffsetRatio.y = min(1.0, documentScrollOffsetRatio.y + 0.15)
     }
 
     func goToDocumentPage(_ page: Int) {
@@ -293,6 +301,57 @@ final class AppState: ObservableObject {
         pl.currentIndex -= 1
         self.playlist = pl
         self.projection = .text(pl.items[pl.currentIndex])
+    }
+
+    func nextServiceItem() {
+        guard let srv = services.first(where: { $0.id == activeServiceId }), !srv.items.isEmpty else { return }
+        if let curId = activeServiceItemId, let idx = srv.items.firstIndex(where: { $0.id == curId }) {
+            if idx + 1 < srv.items.count {
+                projectServiceItem(srv.items[idx + 1])
+            }
+        } else if let first = srv.items.first {
+            projectServiceItem(first)
+        }
+    }
+
+    func prevServiceItem() {
+        guard let srv = services.first(where: { $0.id == activeServiceId }), !srv.items.isEmpty else { return }
+        if let curId = activeServiceItemId, let idx = srv.items.firstIndex(where: { $0.id == curId }) {
+            if idx > 0 {
+                projectServiceItem(srv.items[idx - 1])
+            }
+        }
+    }
+
+    func rewind10Seconds() {
+        if projection.type == .web {
+            sendWebCommand(.rewind(seconds: 10))
+        } else {
+            seekVideo(by: -10)
+        }
+    }
+
+    func forward10Seconds() {
+        if projection.type == .web {
+            sendWebCommand(.forward(seconds: 10))
+        } else {
+            seekVideo(by: 10)
+        }
+    }
+
+    func togglePlayPause() {
+        if projection.type == .web {
+            sendWebCommand(.playPause)
+        } else {
+            isPaused.toggle()
+        }
+    }
+
+    func clearProjection() {
+        projection = .text("")
+        currentDocPath = ""
+        currentDocName = ""
+        playlist = nil
     }
 
     // MARK: - Cintillo Animado (Marquee)

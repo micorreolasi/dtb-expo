@@ -96,21 +96,21 @@ struct MainContentView: View {
         .bottomBorder()
     }
 
-    // MARK: - Espacio de Trabajo Dividido
+    // MARK: - Espacio de Trabajo Dividido (Módulo + Panel de Control de TV)
     private var workspaceView: some View {
         Group {
             if layout.isPortrait && layout.isCompact {
                 VStack(spacing: 0) {
                     moduleControlsArea
-                    previewArea
-                        .frame(height: 70)
+                    TVControlPanelView()
+                        .frame(height: 190)
                         .overlay(alignment: .top) { Rectangle().fill(Theme.panel).frame(height: 1) }
                 }
             } else {
                 HStack(spacing: 0) {
                     moduleControlsArea
-                    previewArea
-                        .frame(width: layout.isCompact ? 120 : 280)
+                    TVControlPanelView()
+                        .frame(width: layout.isCompact ? 180 : 290)
                         .overlay(alignment: .leading) { Rectangle().fill(Theme.panel).frame(width: 1) }
                 }
             }
@@ -133,41 +133,5 @@ struct MainContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // Área de Vista Previa de TV
-    private var previewArea: some View {
-        VStack(spacing: layout.isCompact ? 2 : 10) {
-            // Header del preview con resolución real de la TV
-            HStack(spacing: 4) {
-                Image(systemName: "tv.fill")
-                    .font(.system(size: layout.isCompact ? 10 : 13))
-                    .foregroundStyle(appState.hasExternalDisplay ? Theme.green : Theme.muted)
-                Text("TV: \(appState.externalDisplayName)")
-                    .font(.system(size: layout.isCompact ? 8 : 11, weight: .bold))
-                    .foregroundStyle(appState.hasExternalDisplay ? Theme.green : Theme.muted)
-                    .lineLimit(1)
-                Spacer()
-            }
-
-            // Pantalla con la relación de aspecto real de la TV (HDMI / Cable)
-            ZStack {
-                Color.black
-
-                ProjectionView(mode: .miniPreview)
-            }
-            .aspectRatio(appState.externalDisplayAspectRatio, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .scaleEffect(appState.isFullscreen ? 1.08 : 1.0)
-            .shadow(color: appState.isFullscreen ? Theme.green.opacity(0.4) : Color.clear, radius: 15)
-
-            if !layout.isCompact {
-                Text(appState.isPaused ? "PAUSADO" : (appState.hasExternalDisplay ? "Reflejando en Pantalla Externa" : "Vista Previa de Salida"))
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.dim)
-            }
-        }
-        .padding(layout.isCompact ? 4 : 14)
-        .background(Theme.bg)
     }
 }

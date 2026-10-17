@@ -51,14 +51,14 @@ struct MessagesView: View {
                     }
                 }
 
-                // Control de Tamaño de la Cintilla en Tiempo Real (Grande / Pequeña)
+                // Control de Tamaño de la Cintilla en Tiempo Real (Grande / Pequeña en TV)
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         HStack(spacing: 5) {
-                            Image(systemName: "arrow.up.and.down.text.horizontal")
+                            Image(systemName: "tv.fill")
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.blue)
-                            Text("Tamaño de la Cinta en Pantalla:")
+                            Text("Tamaño del Cintillo en TV / Proyector:")
                                 .font(.system(size: 12, weight: .bold))
                                 .foregroundStyle(Theme.textBright)
                         }
@@ -73,7 +73,7 @@ struct MessagesView: View {
                             .chip(fill: Theme.blue.opacity(0.12), radius: 6)
                     }
 
-                    // Slider de Tamaño en Tiempo Real
+                    // Slider de Tamaño en Tiempo Real para TV
                     HStack(spacing: 8) {
                         Image(systemName: "textformat.size.smaller")
                             .font(.system(size: 12))
@@ -81,7 +81,7 @@ struct MessagesView: View {
 
                         Slider(
                             value: $appState.marqueeScale,
-                            in: 0.6...2.2,
+                            in: 0.6...2.4,
                             step: 0.05
                         )
                         .tint(Theme.blue)
@@ -91,13 +91,14 @@ struct MessagesView: View {
                             .foregroundStyle(Theme.blue)
                     }
 
-                    // Botones rápidos de tamaño predeterminado
-                    HStack(spacing: 6) {
+                    // Botones rápidos de tamaño predeterminado para TV
+                    HStack(spacing: 4) {
                         ForEach([
                             ("Pequeña", 0.75),
                             ("Normal", 1.0),
                             ("Grande", 1.35),
-                            ("Extra Grande", 1.75)
+                            ("Extra", 1.75),
+                            ("Gigante", 2.2)
                         ], id: \.0) { name, scaleValue in
                             let isSelected = abs(appState.marqueeScale - scaleValue) < 0.08
                             Button {
@@ -106,7 +107,7 @@ struct MessagesView: View {
                                 }
                             } label: {
                                 Text(name)
-                                    .font(.system(size: layout.isCompact ? 9 : 11, weight: .bold))
+                                    .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
                                     .foregroundStyle(isSelected ? .white : Theme.muted)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 6)
@@ -118,6 +119,16 @@ struct MessagesView: View {
                             }
                             .buttonStyle(.plain)
                         }
+                    }
+
+                    if !appState.activeMarquee.isEmpty {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.red).frame(width: 6, height: 6)
+                            Text("Activo en TV — Ajustando tamaño en vivo")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Theme.green)
+                        }
+                        .padding(.top, 2)
                     }
                 }
                 .padding(12)
