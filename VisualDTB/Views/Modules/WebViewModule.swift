@@ -124,6 +124,23 @@ struct WebViewModule: View {
                     }
                     .buttonStyle(.plain)
 
+                    // Pantalla Completa TV
+                    Button {
+                        appState.sendWebCommand(.toggleFullscreen)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Pantalla Completa TV")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.sky)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .chip(fill: Theme.sky.opacity(0.15), border: Theme.sky.opacity(0.4), radius: 6)
+                    }
+                    .buttonStyle(.plain)
+
                     // Recargar
                     Button {
                         appState.sendWebCommand(.reload)
@@ -141,14 +158,22 @@ struct WebViewModule: View {
                 .background(Theme.bg)
                 .bottomBorder(Theme.border)
 
-                WebViewRepresentable(urlString: appState.projection.content, mode: .presentation) { newURL in
-                    if newURL.starts(with: "http") {
-                        appState.webUrl = newURL
-                        if appState.projection.content != newURL {
-                            appState.projection = ProjectionData(type: .web, content: newURL)
+                // Visualización 1:1 con la TV (proporción exacta de la pantalla externa)
+                ZStack {
+                    Color.black
+
+                    WebViewRepresentable(urlString: appState.projection.content, mode: .presentation) { newURL in
+                        if newURL.starts(with: "http") {
+                            appState.webUrl = newURL
+                            if appState.projection.content != newURL {
+                                appState.projection = ProjectionData(type: .web, content: newURL)
+                            }
                         }
                     }
                 }
+                .aspectRatio(appState.externalDisplayAspectRatio, contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
             }
         } else {
             ScrollView {

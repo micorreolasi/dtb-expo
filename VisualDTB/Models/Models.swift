@@ -101,6 +101,7 @@ enum WebControlCommand: Equatable {
     case forward(seconds: Double)
     case toggleMute
     case reload
+    case toggleFullscreen
 }
 
 // MARK: - Canciones

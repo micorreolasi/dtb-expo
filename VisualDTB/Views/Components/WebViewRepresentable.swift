@@ -20,6 +20,60 @@ struct WebViewRepresentable: UIViewRepresentable {
         config.mediaTypesRequiringUserActionForPlayback = []
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
 
+        let contentController = WKUserContentController()
+        if mode != .external {
+            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "fullscreenHandler")
+            let js = """
+            (function() {
+                try {
+                    if (window.HTMLVideoElement) {
+                        HTMLVideoElement.prototype.webkitEnterFullscreen = function() {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler) {
+                                window.webkit.messageHandlers.fullscreenHandler.postMessage('toggleFullscreen');
+                            }
+                            return false;
+                        };
+                    }
+                } catch(e) {}
+
+                try {
+                    if (window.Element && Element.prototype.requestFullscreen) {
+                        Element.prototype.requestFullscreen = function() {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler) {
+                                window.webkit.messageHandlers.fullscreenHandler.postMessage('toggleFullscreen');
+                            }
+                            return Promise.resolve();
+                        };
+                    }
+                } catch(e) {}
+
+                function setupFsClick() {
+                    document.addEventListener('click', function(e) {
+                        var target = e.target;
+                        if (!target) return;
+                        var btn = (target.closest) ? target.closest('.ytp-fullscreen-button, button[aria-label*="pantalla completa" i], button[aria-label*="fullscreen" i], [data-title-no-tooltip="Pantalla completa"], .vjs-fullscreen-control, button.fullscreen') : null;
+                        if (btn) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler) {
+                                window.webkit.messageHandlers.fullscreenHandler.postMessage('toggleFullscreen');
+                            }
+                        }
+                    }, true);
+                }
+
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', setupFsClick);
+                } else {
+                    setupFsClick();
+                }
+            })();
+            """
+            let userScript = WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            contentController.addUserScript(userScript)
+        }
+        config.userContentController = contentController
+
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
@@ -169,6 +223,47 @@ struct WebViewRepresentable: UIViewRepresentable {
 
         case .reload:
             webView.reload()
+
+        case .toggleFullscreen:
+            let js = """
+            (function() {
+                var existing = document.getElementById('dtb-fullscreen-style');
+                if (existing) {
+                    existing.remove();
+                    var ytFsBtn = document.querySelector('.ytp-fullscreen-button');
+                    if (ytFsBtn && ytFsBtn.getAttribute('title') && ytFsBtn.getAttribute('title').toLowerCase().indexOf('salir') !== -1) {
+                        try { ytFsBtn.click(); } catch(e) {}
+                    }
+                } else {
+                    var style = document.createElement('style');
+                    style.id = 'dtb-fullscreen-style';
+                    style.textContent = `
+                        video, .html5-video-player, #player, .video-stream, .player-container, #movie_player {
+                            position: fixed !important;
+                            top: 0 !important;
+                            left: 0 !important;
+                            width: 100vw !important;
+                            height: 100vh !important;
+                            max-width: 100vw !important;
+                            max-height: 100vh !important;
+                            z-index: 2147483647 !important;
+                            background: black !important;
+                            object-fit: contain !important;
+                        }
+                        body, html {
+                            overflow: hidden !important;
+                            background: black !important;
+                        }
+                    `;
+                    document.head.appendChild(style);
+                    var vid = document.querySelector('video');
+                    if (vid) {
+                        vid.style.objectFit = 'contain';
+                    }
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
         }
     }
 
@@ -191,7 +286,7 @@ struct WebViewRepresentable: UIViewRepresentable {
         }
     }
 
-    class Coordinator: NSObject, WKNavigationDelegate, UIScrollViewDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, UIScrollViewDelegate, WKScriptMessageHandler {
         var parent: WebViewRepresentable
         var lastTriggerId: UUID? = nil
         var lastLoadedURL: String? = nil
@@ -199,6 +294,14 @@ struct WebViewRepresentable: UIViewRepresentable {
 
         init(_ parent: WebViewRepresentable) {
             self.parent = parent
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "fullscreenHandler" {
+                DispatchQueue.main.async {
+                    self.parent.appState.sendWebCommand(.toggleFullscreen)
+                }
+            }
         }
 
         // Captura el scroll y zoom en el iPad y lo envía a AppState para reflejarlo en el TV
@@ -231,5 +334,15 @@ struct WebViewRepresentable: UIViewRepresentable {
             }
             return nil
         }
+    }
+}
+
+private class ScriptMessageProxy: NSObject, WKScriptMessageHandler {
+    weak var delegate: WKScriptMessageHandler?
+    init(delegate: WKScriptMessageHandler) {
+        self.delegate = delegate
+    }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
     }
 }

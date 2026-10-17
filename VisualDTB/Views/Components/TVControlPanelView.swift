@@ -544,6 +544,25 @@ struct TVControlPanelView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            // Botón de Pantalla Completa en TV
+            Button {
+                if appState.projection.type == .web {
+                    appState.sendWebCommand(.toggleFullscreen)
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: layout.isCompact ? 9 : 11, weight: .bold))
+                    Text("Pantalla Completa TV")
+                        .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                }
+                .foregroundStyle(Theme.sky)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, layout.isCompact ? 5 : 7)
+                .chip(fill: Theme.sky.opacity(0.12), border: Theme.sky.opacity(0.35), radius: 6)
+            }
+            .buttonStyle(.plain)
         }
         .padding(layout.isCompact ? 8 : 10)
         .chip(fill: Theme.panel, border: Theme.border, radius: 8)
