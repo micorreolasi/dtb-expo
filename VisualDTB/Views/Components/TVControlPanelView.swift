@@ -239,43 +239,6 @@ struct TVControlPanelView: View {
                 .buttonStyle(.plain)
                 .disabled(!canGoNext)
             }
-
-            // Cambio de Canción Completa si está en Orden de Culto
-            if hasMultipleServiceItems {
-                HStack(spacing: layout.isCompact ? 4 : 6) {
-                    Button {
-                        appState.prevServiceItem()
-                    } label: {
-                        HStack(spacing: 2) {
-                            Image(systemName: "backward.fill")
-                                .font(.system(size: layout.isCompact ? 8 : 9))
-                            Text("Canción Ant.")
-                                .font(.system(size: layout.isCompact ? 8 : 9, weight: .semibold))
-                        }
-                        .foregroundStyle(Theme.textSoft)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, layout.isCompact ? 4 : 5)
-                        .chip(fill: Theme.panel, border: Theme.border, radius: 4)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        appState.nextServiceItem()
-                    } label: {
-                        HStack(spacing: 2) {
-                            Text("Canción Sig.")
-                                .font(.system(size: layout.isCompact ? 8 : 9, weight: .semibold))
-                            Image(systemName: "forward.fill")
-                                .font(.system(size: layout.isCompact ? 8 : 9))
-                        }
-                        .foregroundStyle(Theme.textSoft)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, layout.isCompact ? 4 : 5)
-                        .chip(fill: Theme.panel, border: Theme.border, radius: 4)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
         }
         .padding(layout.isCompact ? 8 : 10)
         .chip(fill: Theme.panel, border: Theme.border, radius: 8)
@@ -689,10 +652,5 @@ struct TVControlPanelView: View {
             return pl.currentIndex + 1 < pl.items.count
         }
         return false
-    }
-
-    private var hasMultipleServiceItems: Bool {
-        guard let srv = appState.services.first(where: { $0.id == appState.activeServiceId }) else { return false }
-        return srv.items.count > 1
     }
 }
