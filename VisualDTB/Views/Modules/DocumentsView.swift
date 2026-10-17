@@ -66,12 +66,18 @@ struct DocumentsView: View {
                 .background(Theme.panel)
                 .bottomBorder(Theme.border)
 
-                // Visualización a pantalla completa del documento dentro del módulo (igual que en web)
-                PDFDocumentView(
-                    uri: appState.currentDocPath.isEmpty ? appState.projection.content : appState.currentDocPath,
-                    mode: .presentation
-                )
+                // Visualización idéntica 1:1 con la TV (proporción exacta de la pantalla externa)
+                ZStack {
+                    Color.black
+
+                    PDFDocumentView(
+                        uri: appState.currentDocPath.isEmpty ? appState.projection.content : appState.currentDocPath,
+                        mode: .presentation
+                    )
+                }
+                .aspectRatio(appState.externalDisplayAspectRatio, contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
             }
             .fileImporter(
                 isPresented: $showDocumentPicker,
