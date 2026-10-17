@@ -31,7 +31,12 @@ struct TVControlPanelView: View {
                     videoControlsSection
                 }
 
-                // 7. Control de Brillo de Pantalla
+                // 7. Controles de Timer en TV (si está corriendo o proyectando)
+                if appState.timerRunning || appState.projection.content.contains("⏳") {
+                    timerSection
+                }
+
+                // 8. Control de Brillo de Pantalla
                 brightnessSection
             }
             .padding(layout.isCompact ? 8 : 12)
@@ -568,7 +573,81 @@ struct TVControlPanelView: View {
         .chip(fill: Theme.panel, border: Theme.border, radius: 8)
     }
 
-    // MARK: - 7. Brillo de Pantalla
+    // MARK: - 7. Controles de Timer en TV
+    private var timerSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "timer")
+                        .font(.system(size: layout.isCompact ? 9 : 11))
+                        .foregroundStyle(Theme.green)
+                    Text("Timer en TV")
+                        .font(.system(size: layout.isCompact ? 9 : 11, weight: .bold))
+                        .foregroundStyle(Theme.green)
+                }
+
+                Spacer()
+
+                Text(appState.formatTime(appState.timeLeft))
+                    .font(.system(size: layout.isCompact ? 12 : 14, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.textBright)
+            }
+
+            HStack(spacing: 4) {
+                // Play / Pausa
+                Button {
+                    if appState.timerRunning {
+                        appState.pauseTimer()
+                    } else {
+                        appState.startTimer()
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: appState.timerRunning ? "pause.fill" : "play.fill")
+                            .font(.system(size: layout.isCompact ? 9 : 11))
+                        Text(appState.timerRunning ? "Pausa" : "Play")
+                            .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, layout.isCompact ? 5 : 7)
+                    .background(appState.timerRunning ? Theme.amber : Theme.green, in: RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+
+                // +1m
+                Button {
+                    appState.addTimerMinutes(1)
+                } label: {
+                    Text("+1m")
+                        .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                        .foregroundStyle(Theme.textSoft)
+                        .padding(.horizontal, layout.isCompact ? 6 : 8)
+                        .padding(.vertical, layout.isCompact ? 5 : 7)
+                        .chip(fill: Theme.panel, border: Theme.border, radius: 6)
+                }
+                .buttonStyle(.plain)
+
+                // Reset
+                Button {
+                    appState.resetTimer()
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: layout.isCompact ? 9 : 11))
+                        .foregroundStyle(Theme.textSoft)
+                        .padding(.horizontal, layout.isCompact ? 6 : 8)
+                        .padding(.vertical, layout.isCompact ? 5 : 7)
+                        .chip(fill: Theme.panel, border: Theme.border, radius: 6)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(layout.isCompact ? 8 : 10)
+        .chip(fill: Theme.panel, border: Theme.border, radius: 8)
+    }
+
+    // MARK: - 8. Brillo de Pantalla
     private var brightnessSection: some View {
         HStack(spacing: 6) {
             Image(systemName: "sun.max.fill")

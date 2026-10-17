@@ -235,9 +235,7 @@ final class AppState: ObservableObject {
                 if self.timeLeft > 0 {
                     self.timeLeft -= 1
                     if self.projection.content.contains("⏳") {
-                        let mins = String(format: "%02d", self.timeLeft / 60)
-                        let secs = String(format: "%02d", self.timeLeft % 60)
-                        self.projection = .text("⏳ \(mins):\(secs)")
+                        self.projection = .text("⏳ \(self.formatTime(self.timeLeft))")
                     }
                 } else {
                     self.timerRunning = false
@@ -248,11 +246,30 @@ final class AppState: ObservableObject {
             }
     }
 
+    func setTimerDuration(minutes: Int, seconds: Int = 0) {
+        timerRunning = false
+        timerMinutes = max(1, minutes)
+        timeLeft = max(1, minutes * 60 + seconds)
+        if projection.content.contains("⏳") || projection.content.contains("Tiempo Finalizado") {
+            projection = .text("⏳ \(formatTime(timeLeft))")
+        }
+    }
+
+    func addTimerMinutes(_ delta: Int) {
+        let newTotal = max(60, timeLeft + delta * 60)
+        timeLeft = newTotal
+        timerMinutes = max(1, newTotal / 60)
+        if projection.content.contains("⏳") {
+            projection = .text("⏳ \(formatTime(timeLeft))")
+        }
+    }
+
     func startTimer() {
+        if timeLeft <= 0 {
+            timeLeft = timerMinutes * 60
+        }
         timerRunning = true
-        let mins = String(format: "%02d", timeLeft / 60)
-        let secs = String(format: "%02d", timeLeft % 60)
-        projection = .text("⏳ \(mins):\(secs)")
+        projection = .text("⏳ \(formatTime(timeLeft))")
     }
 
     func pauseTimer() {
@@ -262,12 +279,20 @@ final class AppState: ObservableObject {
     func resetTimer() {
         timerRunning = false
         timeLeft = timerMinutes * 60
+        if projection.content.contains("⏳") || projection.content.contains("Tiempo Finalizado") {
+            projection = .text("⏳ \(formatTime(timeLeft))")
+        }
     }
 
     func formatTime(_ seconds: Int) -> String {
-        let m = String(format: "%02d", seconds / 60)
-        let s = String(format: "%02d", seconds % 60)
-        return "\(m):\(s)"
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        if h > 0 {
+            return String(format: "%02d:%02d:%02d", h, m, s)
+        } else {
+            return String(format: "%02d:%02d", m, s)
+        }
     }
 
     // MARK: - Control de Diapositivas (Playlist) y Hojas de Documentos
