@@ -320,6 +320,55 @@ struct BottomToolbarView: View {
             .padding(.horizontal, layout.isCompact ? 4 : 8)
             .padding(.vertical, 4)
             .chip(fill: Color(hex: "#0f172a"), radius: 10)
+
+            // Controles de Zoom de Letra en Tiempo Real (A- / 100% / A+)
+            HStack(spacing: 2) {
+                // Reducir letra
+                Button {
+                    appState.decreaseTextSize()
+                } label: {
+                    HStack(spacing: 1) {
+                        Text("A")
+                            .font(.system(size: layout.isCompact ? 10 : 12, weight: .bold))
+                        Image(systemName: "minus")
+                            .font(.system(size: layout.isCompact ? 7 : 8, weight: .bold))
+                    }
+                    .foregroundStyle(appState.textSize <= 28 ? Theme.dim : Theme.blue)
+                    .frame(width: layout.isCompact ? 24 : 28, height: layout.isCompact ? 24 : 28)
+                }
+                .buttonStyle(.plain)
+                .disabled(appState.textSize <= 28)
+
+                // Indicador / Restablecer al 100%
+                Button {
+                    appState.resetTextSize()
+                } label: {
+                    Text("\(Int((appState.textSize / 48.0) * 100))%")
+                        .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                        .foregroundStyle(abs(appState.textSize - 48.0) > 1.0 ? Theme.green : Theme.textSoft)
+                        .padding(.horizontal, 3)
+                }
+                .buttonStyle(.plain)
+
+                // Aumentar letra
+                Button {
+                    appState.increaseTextSize()
+                } label: {
+                    HStack(spacing: 1) {
+                        Text("A")
+                            .font(.system(size: layout.isCompact ? 11 : 13, weight: .bold))
+                        Image(systemName: "plus")
+                            .font(.system(size: layout.isCompact ? 7 : 8, weight: .bold))
+                    }
+                    .foregroundStyle(appState.textSize >= 76 ? Theme.dim : Theme.blue)
+                    .frame(width: layout.isCompact ? 24 : 28, height: layout.isCompact ? 24 : 28)
+                }
+                .buttonStyle(.plain)
+                .disabled(appState.textSize >= 76)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .chip(fill: Color(hex: "#0f172a"), border: Theme.border, radius: 8)
         }
     }
 

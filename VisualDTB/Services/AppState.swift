@@ -20,6 +20,18 @@ final class AppState: ObservableObject {
     @Published var textColorHex: String = "#ffffff"
     @Published var textHasBackground: Bool = false
 
+    func increaseTextSize() {
+        textSize = min(76.0, textSize + 4.0)
+    }
+
+    func decreaseTextSize() {
+        textSize = max(28.0, textSize - 4.0)
+    }
+
+    func resetTextSize() {
+        textSize = 48.0
+    }
+
     // MARK: - Playlist / Diapositivas
     @Published var playlist: Playlist? = nil
 
