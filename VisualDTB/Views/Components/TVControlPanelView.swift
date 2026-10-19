@@ -437,10 +437,59 @@ struct TVControlPanelView: View {
             }
             .buttonStyle(.plain)
 
-            // Radar interactivo 2D cuando hay zoom o para navegar en TV
+            // Controles compactos de desplazamiento si hay zoom activo
             if appState.documentZoomScale > 1.05 {
-                DocumentRadarTouchpadView(compactMode: true)
-                    .padding(.top, 4)
+                HStack(spacing: 4) {
+                    Text("Mover en TV:")
+                        .font(.system(size: layout.isCompact ? 8 : 9))
+                        .foregroundStyle(Theme.muted)
+
+                    Spacer()
+
+                    Button {
+                        appState.scrollDocumentLeft()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Theme.blue)
+                            .frame(width: 22, height: 20)
+                            .chip(fill: Theme.border, radius: 4)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        appState.scrollDocumentUp()
+                    } label: {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Theme.blue)
+                            .frame(width: 22, height: 20)
+                            .chip(fill: Theme.border, radius: 4)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        appState.scrollDocumentDown()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Theme.blue)
+                            .frame(width: 22, height: 20)
+                            .chip(fill: Theme.border, radius: 4)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        appState.scrollDocumentRight()
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Theme.blue)
+                            .frame(width: 22, height: 20)
+                            .chip(fill: Theme.border, radius: 4)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .padding(layout.isCompact ? 8 : 10)
