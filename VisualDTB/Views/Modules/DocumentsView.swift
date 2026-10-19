@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct DocumentsView: View {
     @EnvironmentObject var appState: AppState
     @State private var showDocumentPicker = false
+    @State private var showDocumentTouchpad = true
 
     private var hasDoc: Bool {
         (appState.projection.type == .document || appState.projection.type == .pdf) && (!appState.currentDocPath.isEmpty || !appState.projection.content.isEmpty)
@@ -32,6 +33,43 @@ struct DocumentsView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .chip(fill: Theme.blue.opacity(0.15), border: Theme.blue.opacity(0.3), radius: 6)
+
+                    // Selector Táctil 2D / Hoja
+                    HStack(spacing: 0) {
+                        Button {
+                            showDocumentTouchpad = true
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "scope")
+                                    .font(.system(size: 11))
+                                Text("Radar 2D TV")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .foregroundStyle(showDocumentTouchpad ? .white : Theme.textSoft)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(showDocumentTouchpad ? Theme.sky : Color.clear)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            showDocumentTouchpad = false
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "doc.plaintext")
+                                    .font(.system(size: 11))
+                                Text("Hoja")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .foregroundStyle(!showDocumentTouchpad ? .white : Theme.textSoft)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(!showDocumentTouchpad ? Theme.blue : Color.clear)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.border, lineWidth: 1))
 
                     // Botón para cambiar de documento
                     Button {
@@ -66,18 +104,142 @@ struct DocumentsView: View {
                 .background(Theme.panel)
                 .bottomBorder(Theme.border)
 
-                // Visualización idéntica 1:1 con la TV (proporción exacta de la pantalla externa)
-                ZStack {
-                    Color.black
+                // Área de visualización y control
+                if showDocumentTouchpad {
+                    // Previsualización y Control Táctil 2D con la imagen del radar
+                    VStack(spacing: 12) {
+                        DocumentRadarTouchpadView(compactMode: false)
 
-                    PDFDocumentView(
-                        uri: appState.currentDocPath.isEmpty ? appState.projection.content : appState.currentDocPath,
-                        mode: .presentation
-                    )
+                        // Controles rápidos de Zoom
+                        HStack(spacing: 8) {
+                            Button {
+                                appState.zoomOutDocument()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "minus.magnifyingglass")
+                                    Text("Zoom -")
+                                        .font(.system(size: 12, weight: .bold))
+                                }
+                                .foregroundStyle(Theme.blue)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .chip(fill: Theme.blue.opacity(0.12), border: Theme.blue.opacity(0.3), radius: 8)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                appState.resetDocumentZoom()
+                            } label: {
+                                Text("100% (Reset)")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(appState.documentZoomScale <= 1.05 ? .white : Theme.textSoft)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .chip(fill: Theme.panel, border: Theme.border, radius: 8)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                appState.fitDocumentWidth()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.left.and.right.square")
+                                    Text("Ajustar Ancho TV")
+                                        .font(.system(size: 12, weight: .bold))
+                                }
+                                .foregroundStyle(appState.documentZoomScale >= 2.1 ? .white : Theme.green)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .chip(
+                                    fill: appState.documentZoomScale >= 2.1 ? Theme.green : Theme.green.opacity(0.15),
+                                    border: Theme.green.opacity(0.4),
+                                    radius: 8
+                                )
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                appState.zoomInDocument()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "plus.magnifyingglass")
+                                    Text("Zoom +")
+                                        .font(.system(size: 12, weight: .bold))
+                                }
+                                .foregroundStyle(Theme.blue)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .chip(fill: Theme.blue.opacity(0.12), border: Theme.blue.opacity(0.3), radius: 8)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        // Navegación de Hojas del Documento
+                        HStack(spacing: 12) {
+                            Button {
+                                appState.prevDocumentPage()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                    Text("Hoja Anterior")
+                                        .font(.system(size: 13, weight: .bold))
+                                }
+                                .foregroundStyle(appState.documentCurrentPage > 0 ? Theme.blue : Theme.dim)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .chip(
+                                    fill: appState.documentCurrentPage > 0 ? Theme.blue.opacity(0.12) : Theme.panel,
+                                    border: Theme.border,
+                                    radius: 8
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(appState.documentCurrentPage <= 0)
+
+                            Text("Página \(appState.documentCurrentPage + 1) de \(max(1, appState.documentTotalPages))")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Theme.textBright)
+
+                            Button {
+                                appState.nextDocumentPage()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text("Hoja Siguiente")
+                                        .font(.system(size: 13, weight: .bold))
+                                    Image(systemName: "chevron.right")
+                                }
+                                .foregroundStyle((appState.documentCurrentPage < appState.documentTotalPages - 1) ? Theme.blue : Theme.dim)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .chip(
+                                    fill: (appState.documentCurrentPage < appState.documentTotalPages - 1) ? Theme.blue.opacity(0.12) : Theme.panel,
+                                    border: Theme.border,
+                                    radius: 8
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(appState.documentCurrentPage >= appState.documentTotalPages - 1)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.bg)
+                } else {
+                    // Visualización directa 1:1 con la TV
+                    ZStack {
+                        Color.black
+
+                        PDFDocumentView(
+                            uri: appState.currentDocPath.isEmpty ? appState.projection.content : appState.currentDocPath,
+                            mode: .presentation
+                        )
+                    }
+                    .aspectRatio(appState.externalDisplayAspectRatio, contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black)
                 }
-                .aspectRatio(appState.externalDisplayAspectRatio, contentMode: .fit)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
             }
             .fileImporter(
                 isPresented: $showDocumentPicker,

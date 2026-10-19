@@ -7,7 +7,6 @@ struct MediaView: View {
     @Environment(\.layoutInfo) var layout
 
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
-    @State private var showFileImporter = false
     @State private var isImporting = false
     @State private var importStatus = ""
 
@@ -74,51 +73,23 @@ struct MediaView: View {
                     previewSelectionPanel(uri: previewUri)
                 }
 
-                // Botones para importar medios
-                HStack(spacing: 12) {
-                    // Botón 1: Importar desde Fotos (PhotosPicker)
-                    PhotosPicker(
-                        selection: $selectedPhotoItem,
-                        matching: .any(of: [.images, .videos])
-                    ) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "photo.badge.plus")
-                                .font(.system(size: 16, weight: .bold))
-                            Text("Subir desde Fotos")
-                                .font(.system(size: 13, weight: .bold))
-                        }
-                        .foregroundStyle(Theme.blue)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .chip(
-                            fill: Theme.blue.opacity(0.10),
-                            border: Theme.blue.opacity(0.4),
-                            radius: 8
-                        )
+                // Botón para importar medios desde Galería / Fotos
+                PhotosPicker(
+                    selection: $selectedPhotoItem,
+                    matching: .any(of: [.images, .videos])
+                ) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.system(size: 16, weight: .bold))
+                        Text("Subir desde Galería")
+                            .font(.system(size: 14, weight: .bold))
                     }
-                    .buttonStyle(.plain)
-
-                    // Botón 2: Importar desde Archivos del iPad (Disco / iCloud / USB)
-                    Button {
-                        showFileImporter = true
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "folder.badge.plus")
-                                .font(.system(size: 16, weight: .bold))
-                            Text("Subir desde Archivos del iPad")
-                                .font(.system(size: 13, weight: .bold))
-                        }
-                        .foregroundStyle(Theme.violetLight)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .chip(
-                            fill: Theme.violet.opacity(0.12),
-                            border: Theme.violetLight.opacity(0.4),
-                            radius: 8
-                        )
-                    }
-                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(Theme.blue, in: RoundedRectangle(cornerRadius: 8))
                 }
+                .buttonStyle(.plain)
 
                 // Título de la galería
                 Text("Fondos Guardados")
@@ -147,13 +118,6 @@ struct MediaView: View {
             Task {
                 await handlePhotoPicked(newItem)
             }
-        }
-        .fileImporter(
-            isPresented: $showFileImporter,
-            allowedContentTypes: [.image, .movie, .video, .quickTimeMovie, .mpeg4Movie, .data],
-            allowsMultipleSelection: false
-        ) { result in
-            handleFileImport(result)
         }
     }
 
@@ -570,33 +534,6 @@ struct MediaView: View {
         } catch {
             await MainActor.run {
                 appState.currentAlert = AppAlert(title: "Error al importar medio", message: error.localizedDescription)
-            }
-        }
-    }
-
-    // MARK: - Importación desde Archivos del iPad (Disco / iCloud / USB)
-    private func handleFileImport(_ result: Result<[URL], Error>) {
-        AudioSessionManager.ensureActive()
-        isImporting = true
-        importStatus = "Importando archivo del iPad..."
-
-        Task.detached(priority: .userInitiated) {
-            defer {
-                Task { @MainActor in
-                    self.isImporting = false
-                }
-            }
-            do {
-                guard let selectedURL = try result.get().first else { return }
-                let imported = try MediaStorage.importMediaFile(from: selectedURL)
-                await MainActor.run {
-                    self.appState.mediaPreviewUri = imported.savedPath
-                    self.appState.mediaPreviewType = imported.isVideo ? .video : .image
-                }
-            } catch {
-                await MainActor.run {
-                    self.appState.currentAlert = AppAlert(title: "Error al importar archivo", message: error.localizedDescription)
-                }
             }
         }
     }

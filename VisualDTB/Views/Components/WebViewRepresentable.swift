@@ -51,7 +51,7 @@ struct WebViewRepresentable: UIViewRepresentable {
                     document.addEventListener('click', function(e) {
                         var target = e.target;
                         if (!target) return;
-                        var btn = (target.closest) ? target.closest('.ytp-fullscreen-button, button[aria-label*="pantalla completa" i], button[aria-label*="fullscreen" i], [data-title-no-tooltip="Pantalla completa"], .vjs-fullscreen-control, button.fullscreen') : null;
+                        var btn = (target.closest) ? target.closest('.ytp-fullscreen-button, .vp-fullscreen-button, button[data-fullscreen], button[aria-label*="pantalla completa" i], button[aria-label*="fullscreen" i], [data-title-no-tooltip="Pantalla completa"], .vjs-fullscreen-control, button.fullscreen, .fullscreen') : null;
                         if (btn) {
                             e.preventDefault();
                             e.stopPropagation();
@@ -234,11 +234,33 @@ struct WebViewRepresentable: UIViewRepresentable {
                     if (ytFsBtn && ytFsBtn.getAttribute('title') && ytFsBtn.getAttribute('title').toLowerCase().indexOf('salir') !== -1) {
                         try { ytFsBtn.click(); } catch(e) {}
                     }
+                    var vimeoFsBtn = document.querySelector('.vp-fullscreen-button');
+                    if (vimeoFsBtn) {
+                        try { vimeoFsBtn.click(); } catch(e) {}
+                    }
+                    var activeElements = document.querySelectorAll('.dtb-fullscreen-active');
+                    for (var i = 0; i < activeElements.length; i++) {
+                        activeElements[i].classList.remove('dtb-fullscreen-active');
+                    }
                 } else {
                     var style = document.createElement('style');
                     style.id = 'dtb-fullscreen-style';
                     style.textContent = `
-                        video, .html5-video-player, #player, .video-stream, .player-container, #movie_player {
+                        video,
+                        .html5-video-player,
+                        #player,
+                        .video-stream,
+                        .player-container,
+                        #movie_player,
+                        .vp-video-wrapper,
+                        .vp-video,
+                        .player,
+                        div[data-player],
+                        div[data-vimeo-initialized],
+                        iframe[src*="vimeo.com"],
+                        iframe[src*="player.vimeo.com"],
+                        iframe[src*="youtube.com"],
+                        .dtb-fullscreen-active {
                             position: fixed !important;
                             top: 0 !important;
                             left: 0 !important;
@@ -246,9 +268,19 @@ struct WebViewRepresentable: UIViewRepresentable {
                             height: 100vh !important;
                             max-width: 100vw !important;
                             max-height: 100vh !important;
-                            z-index: 2147483647 !important;
+                            padding: 0 !important;
+                            margin: 0 !important;
+                            z-index: 2147483640 !important;
                             background: black !important;
                             object-fit: contain !important;
+                            box-sizing: border-box !important;
+                        }
+                        .vp-controls-wrapper,
+                        .vp-controls,
+                        .ytp-chrome-bottom,
+                        .ytp-chrome-top,
+                        .vjs-control-bar {
+                            z-index: 2147483647 !important;
                         }
                         body, html {
                             overflow: hidden !important;
@@ -256,9 +288,23 @@ struct WebViewRepresentable: UIViewRepresentable {
                         }
                     `;
                     document.head.appendChild(style);
-                    var vid = document.querySelector('video');
-                    if (vid) {
-                        vid.style.objectFit = 'contain';
+
+                    // Detectar y maximizar videos y contenedores
+                    var vids = document.querySelectorAll('video');
+                    for (var i = 0; i < vids.length; i++) {
+                        var v = vids[i];
+                        v.classList.add('dtb-fullscreen-active');
+                        v.style.setProperty('object-fit', 'contain', 'important');
+                        var parent = v.closest('.vp-video-wrapper, .player, div[data-player], .html5-video-player, .player-container');
+                        if (parent) {
+                            parent.classList.add('dtb-fullscreen-active');
+                            parent.style.setProperty('padding', '0', 'important');
+                            parent.style.setProperty('height', '100vh', 'important');
+                        }
+                    }
+                    var iframes = document.querySelectorAll('iframe[src*="vimeo"], iframe[src*="youtube"], iframe[src*="player"]');
+                    for (var j = 0; j < iframes.length; j++) {
+                        iframes[j].classList.add('dtb-fullscreen-active');
                     }
                 }
             })();

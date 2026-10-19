@@ -437,47 +437,10 @@ struct TVControlPanelView: View {
             }
             .buttonStyle(.plain)
 
-            // Controles de desplazamiento vertical si hay zoom activo
+            // Radar interactivo 2D cuando hay zoom o para navegar en TV
             if appState.documentZoomScale > 1.05 {
-                HStack(spacing: 4) {
-                    Text("Mover en TV:")
-                        .font(.system(size: layout.isCompact ? 8 : 9))
-                        .foregroundStyle(Theme.muted)
-
-                    Spacer()
-
-                    Button {
-                        appState.scrollDocumentUp()
-                    } label: {
-                        HStack(spacing: 2) {
-                            Image(systemName: "chevron.up")
-                                .font(.system(size: 9, weight: .bold))
-                            Text("Arriba")
-                                .font(.system(size: 8, weight: .bold))
-                        }
-                        .foregroundStyle(Theme.blue)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .chip(fill: Theme.border, radius: 4)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        appState.scrollDocumentDown()
-                    } label: {
-                        HStack(spacing: 2) {
-                            Text("Abajo")
-                                .font(.system(size: 8, weight: .bold))
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .foregroundStyle(Theme.blue)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .chip(fill: Theme.border, radius: 4)
-                    }
-                    .buttonStyle(.plain)
-                }
+                DocumentRadarTouchpadView(compactMode: true)
+                    .padding(.top, 4)
             }
         }
         .padding(layout.isCompact ? 8 : 10)

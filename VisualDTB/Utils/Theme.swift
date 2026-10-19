@@ -37,27 +37,27 @@ extension Color {
 enum Theme {
     // Fondos principales
     // Modo oscuro: azul marino profundo inspirado en el fondo cobalto del icono
-    // Modo claro: blanco con brisa azul hielo limpio y profesional
-    static let bg = Color.dynamic(light: "#f0f6ff", dark: "#0a1526")
-    static let bgDeep = Color.dynamic(light: "#e2eefd", dark: "#060d1a")
-    static let bgBar = Color.dynamic(light: "#e9f2fe", dark: "#0d1e38")
-    static let panel = Color.dynamic(light: "#ffffff", dark: "#122442")
-    static let border = Color.dynamic(light: "#c5daf8", dark: "#1e3a66")
+    // Modo claro: color hueso / marfil cálido y relajante para no fatigar la vista
+    static let bg = Color.dynamic(light: "#f5f2eb", dark: "#0a1526")
+    static let bgDeep = Color.dynamic(light: "#ebe5d8", dark: "#060d1a")
+    static let bgBar = Color.dynamic(light: "#efe9dd", dark: "#0d1e38")
+    static let panel = Color.dynamic(light: "#faf7f2", dark: "#122442")
+    static let border = Color.dynamic(light: "#d8d0c0", dark: "#1e3a66")
 
-    // Textos con máximo contraste y legibilidad
-    static let text = Color.dynamic(light: "#0f172a", dark: "#f1f5f9")
-    static let textBright = Color.dynamic(light: "#020617", dark: "#ffffff")
-    static let textSoft = Color.dynamic(light: "#334155", dark: "#cbd5e1")
-    static let muted = Color.dynamic(light: "#64748b", dark: "#94a3b8")
-    static let dim = Color.dynamic(light: "#94a3b8", dark: "#64748b")
-    static let faint = Color.dynamic(light: "#cbd5e1", dark: "#334155")
+    // Textos con balance óptico sobre tono hueso
+    static let text = Color.dynamic(light: "#292524", dark: "#f1f5f9")
+    static let textBright = Color.dynamic(light: "#1c1917", dark: "#ffffff")
+    static let textSoft = Color.dynamic(light: "#57534e", dark: "#cbd5e1")
+    static let muted = Color.dynamic(light: "#78716c", dark: "#94a3b8")
+    static let dim = Color.dynamic(light: "#a8a29e", dark: "#64748b")
+    static let faint = Color.dynamic(light: "#e7e2d7", dark: "#334155")
 
     // Azules del Icono de la App (Fondo azul cobalto, marco de iPad y lente cyan)
     static let blue = Color.dynamic(light: "#1658b8", dark: "#2563eb")
     static let lightBlue = Color.dynamic(light: "#1d4ed8", dark: "#60a5fa")
     static let sky = Color.dynamic(light: "#0284c7", dark: "#38bdf8")
     static let royalBlue = Color(hex: "#1658b8")
-    static let iceBlue = Color.dynamic(light: "#dbeafe", dark: "#1e3a6e")
+    static let iceBlue = Color.dynamic(light: "#e2ebf6", dark: "#1e3a6e")
 
     // Colores semánticos funcionales
     static let green = Color(hex: "#10b981")

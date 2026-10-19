@@ -195,48 +195,6 @@ struct WebViewModule: View {
                     .padding(12)
                     .chip(fill: Theme.panel, radius: 8)
 
-                    // Accesos rápidos populares (YouTube, etc.)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Accesos Rápidos:")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Theme.muted)
-
-                        HStack(spacing: 10) {
-                            Button {
-                                appState.webUrl = "https://www.youtube.com"
-                                appState.projection = ProjectionData(type: .web, content: "https://www.youtube.com")
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "play.rectangle.fill")
-                                        .foregroundStyle(Theme.red)
-                                    Text("YouTube")
-                                        .font(.system(size: 13, weight: .bold))
-                                        .foregroundStyle(Theme.textBright)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .chip(fill: Theme.panel, border: Theme.border, radius: 8)
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                appState.webUrl = "https://www.google.com"
-                                appState.projection = ProjectionData(type: .web, content: "https://www.google.com")
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "magnifyingglass")
-                                        .foregroundStyle(Theme.blue)
-                                    Text("Google")
-                                        .font(.system(size: 13, weight: .bold))
-                                        .foregroundStyle(Theme.textBright)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .chip(fill: Theme.panel, border: Theme.border, radius: 8)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
 
                     Button {
                         appState.projection = ProjectionData(type: .web, content: appState.webUrl)

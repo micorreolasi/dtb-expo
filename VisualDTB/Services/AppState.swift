@@ -172,10 +172,45 @@ final class AppState: ObservableObject {
         documentScrollOffsetRatio.y = min(1.0, documentScrollOffsetRatio.y + 0.15)
     }
 
+    func scrollDocumentLeft() {
+        documentScrollOffsetRatio.x = max(0.0, documentScrollOffsetRatio.x - 0.15)
+    }
+
+    func scrollDocumentRight() {
+        documentScrollOffsetRatio.x = min(1.0, documentScrollOffsetRatio.x + 0.15)
+    }
+
+    func setDocumentScrollOffset(x: CGFloat, y: CGFloat) {
+        documentScrollOffsetRatio = CGPoint(
+            x: max(0.0, min(1.0, x)),
+            y: max(0.0, min(1.0, y))
+        )
+    }
+
+    func centerDocumentScroll() {
+        documentScrollOffsetRatio = CGPoint(x: 0.5, y: 0.5)
+    }
+
     func goToDocumentPage(_ page: Int) {
         guard page >= 0, page < documentTotalPages else { return }
         documentCurrentPage = page
         documentPageAction = nil
+        documentNavTriggerId = UUID()
+    }
+
+    func nextDocumentPage() {
+        if documentCurrentPage + 1 < documentTotalPages {
+            documentCurrentPage += 1
+        }
+        documentPageAction = .next
+        documentNavTriggerId = UUID()
+    }
+
+    func prevDocumentPage() {
+        if documentCurrentPage > 0 {
+            documentCurrentPage -= 1
+        }
+        documentPageAction = .prev
         documentNavTriggerId = UUID()
     }
 
