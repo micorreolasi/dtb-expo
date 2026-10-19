@@ -35,39 +35,39 @@ extension Color {
 // MARK: - Paleta de colores inspirada fielmente en el Icono de la App (Proyector + iPad en azul cobalto)
 
 enum Theme {
-    // Fondos principales
-    // Modo oscuro: azul marino profundo inspirado en el fondo cobalto del icono
-    // Modo claro: color hueso / marfil cálido y relajante para no fatigar la vista
-    static let bg = Color.dynamic(light: "#f5f2eb", dark: "#0a1526")
-    static let bgDeep = Color.dynamic(light: "#ebe5d8", dark: "#060d1a")
-    static let bgBar = Color.dynamic(light: "#efe9dd", dark: "#0d1e38")
-    static let panel = Color.dynamic(light: "#faf7f2", dark: "#122442")
-    static let border = Color.dynamic(light: "#d8d0c0", dark: "#1e3a66")
+    // Fondos principales (Minimalismo sobrio, sin brillos artificiales ni degradados)
+    // Modo oscuro: pizarra marino profundo y mate
+    // Modo claro: color hueso / marfil cálido y blanco roto, sin fatiga ocular
+    static let bg = Color.dynamic(light: "#f5f2eb", dark: "#0b1320")
+    static let bgDeep = Color.dynamic(light: "#ebe5d8", dark: "#070c14")
+    static let bgBar = Color.dynamic(light: "#efe9dd", dark: "#0e1828")
+    static let panel = Color.dynamic(light: "#faf7f2", dark: "#121e33")
+    static let border = Color.dynamic(light: "#d6cebf", dark: "#1e2f4d")
 
-    // Textos con balance óptico sobre tono hueso
+    // Textos con balance óptico en tonos tierra, piedra y pizarra mate
     static let text = Color.dynamic(light: "#292524", dark: "#f1f5f9")
     static let textBright = Color.dynamic(light: "#1c1917", dark: "#ffffff")
-    static let textSoft = Color.dynamic(light: "#57534e", dark: "#cbd5e1")
-    static let muted = Color.dynamic(light: "#78716c", dark: "#94a3b8")
-    static let dim = Color.dynamic(light: "#a8a29e", dark: "#64748b")
-    static let faint = Color.dynamic(light: "#e7e2d7", dark: "#334155")
+    static let textSoft = Color.dynamic(light: "#57534e", dark: "#94a3b8")
+    static let muted = Color.dynamic(light: "#78716c", dark: "#64748b")
+    static let dim = Color.dynamic(light: "#a8a29e", dark: "#475569")
+    static let faint = Color.dynamic(light: "#e7e2d7", dark: "#1e293b")
 
-    // Azules del Icono de la App (Fondo azul cobalto, marco de iPad y lente cyan)
-    static let blue = Color.dynamic(light: "#1658b8", dark: "#2563eb")
-    static let lightBlue = Color.dynamic(light: "#1d4ed8", dark: "#60a5fa")
-    static let sky = Color.dynamic(light: "#0284c7", dark: "#38bdf8")
-    static let royalBlue = Color(hex: "#1658b8")
-    static let iceBlue = Color.dynamic(light: "#e2ebf6", dark: "#1e3a6e")
+    // Colores del Icono de la App (Azul cobalto clásico, limpio y profesional, mate)
+    static let blue = Color.dynamic(light: "#1d4ed8", dark: "#3b82f6")
+    static let lightBlue = Color.dynamic(light: "#2563eb", dark: "#60a5fa")
+    static let sky = Color.dynamic(light: "#1d4ed8", dark: "#3b82f6") // Alias sobrio a azul cobalto
+    static let royalBlue = Color(hex: "#1d4ed8")
+    static let iceBlue = Color.dynamic(light: "#e2ebf6", dark: "#1e293b")
 
-    // Colores semánticos funcionales
-    static let green = Color(hex: "#10b981")
-    static let greenLight = Color(hex: "#34d399")
-    static let red = Color(hex: "#ef4444")
-    static let amber = Color(hex: "#f59e0b")
-    static let amberLight = Color(hex: "#fbbf24")
-    static let violet = Color(hex: "#8b5cf6")
-    static let violetLight = Color(hex: "#c4b5fd")
-    static let marqueeRed = Color(.sRGB, red: 220 / 255, green: 38 / 255, blue: 38 / 255, opacity: 0.95)
+    // Colores semánticos en tonos sobrios y mates (sin fluorescencias ni neones)
+    static let green = Color(hex: "#15803d")
+    static let greenLight = Color(hex: "#16a34a")
+    static let red = Color(hex: "#b91c1c")
+    static let amber = Color(hex: "#b45309")
+    static let amberLight = Color(hex: "#d97706")
+    static let violet = Color.dynamic(light: "#1d4ed8", dark: "#3b82f6") // Alias a azul cobalto para evitar morados cliché
+    static let violetLight = Color.dynamic(light: "#2563eb", dark: "#60a5fa")
+    static let marqueeRed = Color(.sRGB, red: 185 / 255, green: 28 / 255, blue: 28 / 255, opacity: 0.95)
 }
 
 // MARK: - Información de layout (equivalente a useWindowDimensions)

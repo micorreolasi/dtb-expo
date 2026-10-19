@@ -91,7 +91,7 @@ struct WebViewModule: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Theme.violet, in: RoundedRectangle(cornerRadius: 6))
+                        .background(Theme.blue, in: RoundedRectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
 
@@ -108,7 +108,7 @@ struct WebViewModule: View {
                         .foregroundStyle(Theme.blue)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .chip(fill: Theme.blue.opacity(0.15), border: Theme.blue.opacity(0.4), radius: 6)
+                        .chip(fill: Theme.blue.opacity(0.12), border: Theme.blue.opacity(0.3), radius: 6)
                     }
                     .buttonStyle(.plain)
 
@@ -134,10 +134,10 @@ struct WebViewModule: View {
                             Text("Pantalla Completa TV")
                                 .font(.system(size: 11, weight: .bold))
                         }
-                        .foregroundStyle(Theme.sky)
+                        .foregroundStyle(Theme.blue)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .chip(fill: Theme.sky.opacity(0.15), border: Theme.sky.opacity(0.4), radius: 6)
+                        .chip(fill: Theme.blue.opacity(0.12), border: Theme.blue.opacity(0.3), radius: 6)
                     }
                     .buttonStyle(.plain)
 

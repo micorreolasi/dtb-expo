@@ -23,6 +23,7 @@ struct WebViewRepresentable: UIViewRepresentable {
         let contentController = WKUserContentController()
         if mode != .external {
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "fullscreenHandler")
+            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "videoPlaybackSync")
             let js = """
             (function() {
                 try {
@@ -62,10 +63,101 @@ struct WebViewRepresentable: UIViewRepresentable {
                     }, true);
                 }
 
+                // Sincronización de eventos de video entre iPad y TV para Vimeo, YouTube y HTML5
+                function setupVideoSync() {
+                    document.addEventListener('play', function(e) {
+                        if (e.target && e.target.tagName === 'VIDEO') {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.videoPlaybackSync) {
+                                window.webkit.messageHandlers.videoPlaybackSync.postMessage({
+                                    action: 'play',
+                                    time: e.target.currentTime || 0
+                                });
+                            }
+                        }
+                    }, true);
+
+                    document.addEventListener('pause', function(e) {
+                        if (e.target && e.target.tagName === 'VIDEO') {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.videoPlaybackSync) {
+                                window.webkit.messageHandlers.videoPlaybackSync.postMessage({
+                                    action: 'pause',
+                                    time: e.target.currentTime || 0
+                                });
+                            }
+                        }
+                    }, true);
+
+                    document.addEventListener('seeked', function(e) {
+                        if (e.target && e.target.tagName === 'VIDEO') {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.videoPlaybackSync) {
+                                window.webkit.messageHandlers.videoPlaybackSync.postMessage({
+                                    action: 'seek',
+                                    time: e.target.currentTime || 0
+                                });
+                            }
+                        }
+                    }, true);
+
+                    // Registrar escuchas de eventos en iframes de Vimeo periódicamente
+                    function registerIframeListeners() {
+                        var iframes = document.querySelectorAll('iframe');
+                        for (var i = 0; i < iframes.length; i++) {
+                            try {
+                                iframes[i].contentWindow.postMessage('{"method":"addEventListener","value":"play"}', '*');
+                                iframes[i].contentWindow.postMessage('{"method":"addEventListener","value":"pause"}', '*');
+                                iframes[i].contentWindow.postMessage('{"method":"addEventListener","value":"seeked"}', '*');
+                            } catch(e) {}
+                        }
+                    }
+                    setInterval(registerIframeListeners, 2000);
+                    registerIframeListeners();
+
+                    // Escuchar eventos de iframes de Vimeo y YouTube
+                    window.addEventListener('message', function(ev) {
+                        try {
+                            var d = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+                            if (d && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.videoPlaybackSync) {
+                                if (d.event === 'play' || d.method === 'play') {
+                                    window.webkit.messageHandlers.videoPlaybackSync.postMessage({ action: 'play', time: (d.data && d.data.seconds) ? d.data.seconds : 0 });
+                                } else if (d.event === 'pause' || d.method === 'pause') {
+                                    window.webkit.messageHandlers.videoPlaybackSync.postMessage({ action: 'pause', time: (d.data && d.data.seconds) ? d.data.seconds : 0 });
+                                } else if (d.event === 'seeked') {
+                                    window.webkit.messageHandlers.videoPlaybackSync.postMessage({ action: 'seek', time: (d.data && d.data.seconds) ? d.data.seconds : 0 });
+                                } else if (d.event === 'ready') {
+                                    registerIframeListeners();
+                                }
+                            }
+                        } catch(e) {}
+                    });
+
+                    // Detectar toque o clic directo en reproductores de video (Vimeo, YouTube, etc.)
+                    document.addEventListener('click', function(e) {
+                        var target = e.target;
+                        if (!target) return;
+                        var isPlayClick = (target.closest) ? target.closest('.vp-play-button, .play-button, button.play, .vp-video-wrapper, [data-play-button], .ytp-play-button, .ytp-large-play-button, button[aria-label*="Play" i], button[aria-label*="Reproducir" i], video') : null;
+                        if (isPlayClick) {
+                            setTimeout(function() {
+                                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.videoPlaybackSync) {
+                                    var v = document.querySelector('video');
+                                    var isPaused = v ? v.paused : false;
+                                    window.webkit.messageHandlers.videoPlaybackSync.postMessage({
+                                        action: isPaused ? 'pause' : 'play',
+                                        time: v ? (v.currentTime || 0) : 0
+                                    });
+                                }
+                            }, 400);
+                        }
+                    }, true);
+                }
+
                 if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', setupFsClick);
+                    document.addEventListener('DOMContentLoaded', function() {
+                        setupFsClick();
+                        setupVideoSync();
+                    });
                 } else {
                     setupFsClick();
+                    setupVideoSync();
                 }
             })();
             """
@@ -158,18 +250,104 @@ struct WebViewRepresentable: UIViewRepresentable {
 
     private func executeWebCommand(_ command: WebControlCommand, in webView: WKWebView) {
         switch command {
+        case .play:
+            let js = """
+            (function() {
+                var vids = document.querySelectorAll('video');
+                for (var i = 0; i < vids.length; i++) {
+                    vids[i].setAttribute('playsinline', '');
+                    vids[i].setAttribute('webkit-playsinline', '');
+                    vids[i].muted = false;
+                    var p = vids[i].play();
+                    if (p && p.catch) {
+                        p.catch(function() {
+                            vids[i].muted = true;
+                            vids[i].play();
+                        });
+                    }
+                }
+                var iframes = document.querySelectorAll('iframe');
+                for (var j = 0; j < iframes.length; j++) {
+                    try {
+                        iframes[j].contentWindow.postMessage('{"method":"play"}', '*');
+                        iframes[j].contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+                    } catch(e) {}
+                }
+                var playSelectors = [
+                    '.vp-play-button',
+                    'button[data-play-button]',
+                    '.play-button',
+                    'button.play',
+                    '.vp-overlay-play-button',
+                    '.vp-telemetry-play-button',
+                    '.vp-preview-play-icon',
+                    'button[aria-label*="Play" i]',
+                    'button[aria-label*="Reproducir" i]',
+                    '.ytp-play-button',
+                    '.ytp-large-play-button'
+                ];
+                for (var k = 0; k < playSelectors.length; k++) {
+                    var el = document.querySelector(playSelectors[k]);
+                    if (el) {
+                        try { el.click(); } catch(e) {}
+                    }
+                }
+                try {
+                    if (window.player && typeof window.player.play === 'function') {
+                        window.player.play();
+                    }
+                } catch(e) {}
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
+        case .pause:
+            let js = """
+            (function() {
+                var vids = document.querySelectorAll('video');
+                for (var i = 0; i < vids.length; i++) {
+                    vids[i].pause();
+                }
+                var iframes = document.querySelectorAll('iframe');
+                for (var j = 0; j < iframes.length; j++) {
+                    try {
+                        iframes[j].contentWindow.postMessage('{"method":"pause"}', '*');
+                        iframes[j].contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+                    } catch(e) {}
+                }
+                var pauseSelectors = [
+                    '.vp-pause-button',
+                    'button[aria-label*="Pause" i]',
+                    'button[aria-label*="Pausar" i]',
+                    '.ytp-play-button'
+                ];
+                for (var k = 0; k < pauseSelectors.length; k++) {
+                    var el = document.querySelector(pauseSelectors[k]);
+                    if (el) {
+                        try { el.click(); } catch(e) {}
+                    }
+                }
+                try {
+                    if (window.player && typeof window.player.pause === 'function') {
+                        window.player.pause();
+                    }
+                } catch(e) {}
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
         case .playPause:
             let js = """
             (function() {
                 var vids = document.querySelectorAll('video');
-                if (vids.length > 0) {
-                    var anyPlaying = false;
-                    for (var i = 0; i < vids.length; i++) {
-                        if (!vids[i].paused && !vids[i].ended && vids[i].readyState > 2) {
-                            anyPlaying = true;
-                            break;
-                        }
+                var anyPlaying = false;
+                for (var i = 0; i < vids.length; i++) {
+                    if (!vids[i].paused && !vids[i].ended && vids[i].readyState > 2) {
+                        anyPlaying = true;
+                        break;
                     }
+                }
+                if (vids.length > 0) {
                     for (var i = 0; i < vids.length; i++) {
                         if (anyPlaying) {
                             vids[i].pause();
@@ -177,10 +355,54 @@ struct WebViewRepresentable: UIViewRepresentable {
                             vids[i].play();
                         }
                     }
-                    return;
                 }
-                var playBtn = document.querySelector('.ytp-play-button') || document.querySelector('button[aria-label="Play"]') || document.querySelector('button[aria-label="Pause"]');
-                if (playBtn) playBtn.click();
+                var iframes = document.querySelectorAll('iframe');
+                for (var j = 0; j < iframes.length; j++) {
+                    try {
+                        if (anyPlaying) {
+                            iframes[j].contentWindow.postMessage('{"method":"pause"}', '*');
+                            iframes[j].contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+                        } else {
+                            iframes[j].contentWindow.postMessage('{"method":"play"}', '*');
+                            iframes[j].contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+                        }
+                    } catch(e) {}
+                }
+                var toggleSelectors = [
+                    '.ytp-play-button',
+                    '.vp-play-button',
+                    'button[data-play-button]',
+                    'button[aria-label*="Play" i]',
+                    'button[aria-label*="Pause" i]',
+                    'button[aria-label*="Reproducir" i]',
+                    'button[aria-label*="Pausar" i]'
+                ];
+                for (var k = 0; k < toggleSelectors.length; k++) {
+                    var el = document.querySelector(toggleSelectors[k]);
+                    if (el) {
+                        try { el.click(); break; } catch(e) {}
+                    }
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
+        case .syncTime(let seconds):
+            let js = """
+            (function() {
+                var vids = document.querySelectorAll('video');
+                for (var i = 0; i < vids.length; i++) {
+                    if (Math.abs((vids[i].currentTime || 0) - \(seconds)) > 1.5) {
+                        vids[i].currentTime = \(seconds);
+                    }
+                }
+                var iframes = document.querySelectorAll('iframe');
+                for (var j = 0; j < iframes.length; j++) {
+                    try {
+                        iframes[j].contentWindow.postMessage('{"method":"setCurrentTime","value":\(seconds)}', '*');
+                        iframes[j].contentWindow.postMessage('{"event":"command","func":"seekTo","args":[\(seconds),true]}', '*');
+                    } catch(e) {}
+                }
             })();
             """
             webView.evaluateJavaScript(js, completionHandler: nil)
@@ -347,6 +569,17 @@ struct WebViewRepresentable: UIViewRepresentable {
                 DispatchQueue.main.async {
                     self.parent.appState.sendWebCommand(.toggleFullscreen)
                 }
+            } else if message.name == "videoPlaybackSync", let dict = message.body as? [String: Any], let action = dict["action"] as? String {
+                let time = dict["time"] as? Double ?? 0.0
+                DispatchQueue.main.async {
+                    if action == "play" {
+                        self.parent.appState.sendWebCommand(.play)
+                    } else if action == "pause" {
+                        self.parent.appState.sendWebCommand(.pause)
+                    } else if action == "seek" {
+                        self.parent.appState.sendWebCommand(.syncTime(seconds: time))
+                    }
+                }
             }
         }
 
@@ -370,6 +603,19 @@ struct WebViewRepresentable: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             if let current = webView.url?.absoluteString {
                 parent.onNavigation?(current)
+            }
+            if parent.mode == .external {
+                let tvSetup = """
+                (function() {
+                    var vids = document.querySelectorAll('video');
+                    for (var i = 0; i < vids.length; i++) {
+                        vids[i].setAttribute('playsinline', '');
+                        vids[i].setAttribute('webkit-playsinline', '');
+                        vids[i].style.setProperty('object-fit', 'contain', 'important');
+                    }
+                })();
+                """
+                webView.evaluateJavaScript(tvSetup, completionHandler: nil)
             }
         }
 

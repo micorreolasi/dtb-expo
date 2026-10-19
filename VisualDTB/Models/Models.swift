@@ -96,12 +96,15 @@ enum DocumentNavAction: Equatable {
 }
 
 enum WebControlCommand: Equatable {
+    case play
+    case pause
     case playPause
     case rewind(seconds: Double)
     case forward(seconds: Double)
     case toggleMute
     case reload
     case toggleFullscreen
+    case syncTime(seconds: Double)
 }
 
 // MARK: - Canciones
