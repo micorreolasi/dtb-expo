@@ -51,6 +51,15 @@ final class AppState: ObservableObject {
         webControlTriggerId = UUID()
     }
 
+    // Comando exclusivo para la TV externa (ej. sincronizar play/pause detectado en iPad)
+    @Published var externalWebControlCommand: WebControlCommand? = nil
+    @Published var externalWebControlTriggerId: UUID = UUID()
+
+    func sendExternalWebCommand(_ command: WebControlCommand) {
+        externalWebControlCommand = command
+        externalWebControlTriggerId = UUID()
+    }
+
     // MARK: - Mensajes / Cintillo (Marquee)
     @Published var messageInput: String = ""
     @Published var messageReps: String = "3"
