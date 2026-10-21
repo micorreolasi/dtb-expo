@@ -208,19 +208,19 @@ final class AppState: ObservableObject {
     }
 
     func nextDocumentPage() {
-        if documentTotalPages <= 1 || documentCurrentPage + 1 < documentTotalPages {
+        if documentCurrentPage + 1 < documentTotalPages {
             documentCurrentPage += 1
-            if documentCurrentPage >= documentTotalPages {
-                documentTotalPages = documentCurrentPage + 1
-            }
-        } else if documentCurrentPage + 1 >= documentTotalPages && !currentDocPath.lowercased().hasSuffix(".pdf") {
-            // Para presentaciones .key y .pptx en WebView, permitir avanzar para no quedar trabados
+        } else if documentTotalPages <= 1 {
             documentCurrentPage += 1
             documentTotalPages = max(documentTotalPages, documentCurrentPage + 1)
         }
         documentPageAction = .next
         documentNavTriggerId = UUID()
-        documentScrollOffsetRatio.y = min(1.0, documentScrollOffsetRatio.y + 0.12)
+        if documentTotalPages > 1 {
+            documentScrollOffsetRatio.y = CGFloat(documentCurrentPage) / CGFloat(max(1, documentTotalPages - 1))
+        } else {
+            documentScrollOffsetRatio.y = min(1.0, documentScrollOffsetRatio.y + 0.10)
+        }
         webScrollRatio = documentScrollOffsetRatio.y
     }
 
@@ -230,7 +230,11 @@ final class AppState: ObservableObject {
         }
         documentPageAction = .prev
         documentNavTriggerId = UUID()
-        documentScrollOffsetRatio.y = max(0.0, documentScrollOffsetRatio.y - 0.12)
+        if documentTotalPages > 1 {
+            documentScrollOffsetRatio.y = CGFloat(documentCurrentPage) / CGFloat(max(1, documentTotalPages - 1))
+        } else {
+            documentScrollOffsetRatio.y = max(0.0, documentScrollOffsetRatio.y - 0.10)
+        }
         webScrollRatio = documentScrollOffsetRatio.y
     }
 
@@ -249,15 +253,22 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Desplazamiento táctil fino, continuo y lento tipo pantalla táctil
+    /// Desplazamiento táctil fino, continuo y suave tipo pantalla táctil
     func scrollDocumentTouch(deltaY: CGFloat) {
-        let sensitivity: CGFloat = 0.0016 // Movimiento lento y controlado
+        let totalPages = max(1, documentTotalPages)
+        let pageFraction = 1.0 / CGFloat(totalPages)
+        // Sensibilidad suave para avance natural de hojas
+        let sensitivity: CGFloat = (pageFraction * 0.006)
         let factor: CGFloat = isNaturalScroll ? -1.0 : 1.0
-        let change = deltaY * factor * sensitivity
+        let change = deltaY * factor * max(0.0003, sensitivity)
         let newRatio = max(0.0, min(1.0, documentScrollOffsetRatio.y + change))
         documentScrollOffsetRatio.y = newRatio
         webScrollRatio = newRatio
-        documentNavTriggerId = UUID()
+        // Actualizar la hoja actual según la posición relativa sin disparar falsos saltos
+        let calculatedPage = min(totalPages - 1, Int(round(newRatio * CGFloat(max(1, totalPages - 1)))))
+        if documentCurrentPage != calculatedPage {
+            documentCurrentPage = calculatedPage
+        }
     }
 
     var isDocumentActive: Bool {

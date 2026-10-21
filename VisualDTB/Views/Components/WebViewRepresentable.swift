@@ -31,49 +31,34 @@ struct WebViewRepresentable: UIViewRepresentable {
 
         let contentController = WKUserContentController()
         if mode != .external {
-            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "fullscreenHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "videoPlaybackSync")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "clickMirrorHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "urlChangeHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "inputSyncHandler")
+            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "documentPageCountHandler")
 
             let js = """
             (function() {
-                try {
-                    if (window.HTMLVideoElement) {
-                        HTMLVideoElement.prototype.webkitEnterFullscreen = function() {
-                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler) {
-                                window.webkit.messageHandlers.fullscreenHandler.postMessage('toggleFullscreen');
-                            }
-                            return false;
-                        };
-                    }
-                } catch(e) {}
-
-                try {
-                    if (window.Element && Element.prototype.requestFullscreen) {
-                        Element.prototype.requestFullscreen = function() {
-                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler) {
-                                window.webkit.messageHandlers.fullscreenHandler.postMessage('toggleFullscreen');
-                            }
-                            return Promise.resolve();
-                        };
-                    }
-                } catch(e) {}
-
-                function setupFsClick() {
-                    document.addEventListener('click', function(e) {
-                        var target = e.target;
-                        if (!target) return;
-                        var btn = (target.closest) ? target.closest('.ytp-fullscreen-button, .vp-fullscreen-button, button[data-fullscreen], button[aria-label*="pantalla completa" i], button[aria-label*="fullscreen" i], [data-title-no-tooltip="Pantalla completa"], .vjs-fullscreen-control, button.fullscreen, .fullscreen') : null;
-                        if (btn) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler) {
-                                window.webkit.messageHandlers.fullscreenHandler.postMessage('toggleFullscreen');
+                // Detección precisa de diapositivas en presentaciones (.key, .pptx, QuickLook)
+                function detectDocumentPages() {
+                    try {
+                        var slides = document.querySelectorAll('.slide, .page, section, [data-slide-index], [data-page-number], div[id*="slide"], canvas');
+                        var count = 0;
+                        if (slides && slides.length > 1) {
+                            count = slides.length;
+                        } else {
+                            var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight);
+                            var vh = window.innerHeight || 768;
+                            if (totalH > vh * 1.1) {
+                                count = Math.max(1, Math.round(totalH / vh));
+                            } else {
+                                count = 1;
                             }
                         }
-                    }, true);
+                        if (count > 1 && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPageCountHandler) {
+                            window.webkit.messageHandlers.documentPageCountHandler.postMessage(count);
+                        }
+                    } catch(e) {}
                 }
 
                 // Sincronización continua de URLs para SPAs (YouTube, Vimeo, etc.)
@@ -269,18 +254,20 @@ struct WebViewRepresentable: UIViewRepresentable {
 
                 if (document.readyState === 'loading') {
                     document.addEventListener('DOMContentLoaded', function() {
-                        setupFsClick();
                         setupClickMirror();
                         setupVideoSync();
                         setupUrlChangeSync();
                         setupInputSync();
+                        detectDocumentPages();
+                        setTimeout(detectDocumentPages, 1000);
                     });
                 } else {
-                    setupFsClick();
                     setupClickMirror();
                     setupVideoSync();
                     setupUrlChangeSync();
                     setupInputSync();
+                    detectDocumentPages();
+                    setTimeout(detectDocumentPages, 1000);
                 }
             })();
             """
@@ -297,8 +284,10 @@ struct WebViewRepresentable: UIViewRepresentable {
         webView.backgroundColor = .black
         webView.isOpaque = false
 
-        // User Agent de escritorio para garantizar que iPad y TV carguen exactamente la misma versión y diseño de la página
-        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+        // User Agent de escritorio para YouTube y sitios web, pero manteniendo el User Agent nativo para Vimeo y videos directos
+        if !urlString.lowercased().contains("vimeo") {
+            webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+        }
 
         context.coordinator.lastLoadedURL = urlString
         loadURL(in: webView)
@@ -353,9 +342,20 @@ struct WebViewRepresentable: UIViewRepresentable {
             context.coordinator.lastTriggerId = triggerId
             let sv = uiView.scrollView
             let maxOffset = max(0, sv.contentSize.height - sv.bounds.height)
+            let pageHeight = max(200, sv.bounds.height > 100 ? sv.bounds.height * 0.95 : UIScreen.main.bounds.height * 0.95)
+
+            // Desplazamiento por DOM de JavaScript (esencial para presentaciones Keynote y PPTX en QuickLook)
+            let jsSlide: String
+            if navAction == .next {
+                jsSlide = "window.scrollBy({ top: \(pageHeight), behavior: 'smooth' });"
+            } else if navAction == .prev {
+                jsSlide = "window.scrollBy({ top: -\(pageHeight), behavior: 'smooth' });"
+            } else {
+                jsSlide = "window.scrollTo({ top: 0, behavior: 'instant' });"
+            }
+            uiView.evaluateJavaScript(jsSlide, completionHandler: nil)
 
             if maxOffset > 0 {
-                let pageHeight = max(200, sv.bounds.height * 0.90)
                 let currentOffset = sv.contentOffset.y
                 let targetOffset: CGFloat
                 if navAction == .next {
@@ -363,14 +363,9 @@ struct WebViewRepresentable: UIViewRepresentable {
                 } else if navAction == .prev {
                     targetOffset = max(0, currentOffset - pageHeight)
                 } else {
-                    targetOffset = currentOffset
+                    targetOffset = 0
                 }
                 sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetOffset), animated: true)
-                let ratio = max(0.0, min(1.0, targetOffset / maxOffset))
-                DispatchQueue.main.async {
-                    self.appState.documentScrollOffsetRatio.y = ratio
-                    self.appState.webScrollRatio = ratio
-                }
             }
         }
 
@@ -800,6 +795,12 @@ struct WebViewRepresentable: UIViewRepresentable {
                         self.parent.appState.sendExternalWebCommand(.submitInput(selector: sel))
                     }
                 }
+            } else if message.name == "documentPageCountHandler", let count = message.body as? Int, count > 1 {
+                DispatchQueue.main.async {
+                    if self.parent.appState.documentTotalPages != count {
+                        self.parent.appState.documentTotalPages = count
+                    }
+                }
             } else if message.name == "clickMirrorHandler", let dict = message.body as? [String: Any] {
                 let xRatio = dict["xRatio"] as? Double ?? 0.5
                 let yRatio = dict["yRatio"] as? Double ?? 0.5
@@ -873,6 +874,27 @@ struct WebViewRepresentable: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             if let current = webView.url?.absoluteString {
                 parent.onNavigation?(current)
+            }
+
+            // Detección automática del número de páginas en presentaciones (.key, .pptx)
+            let countScript = """
+            (function() {
+                var slides = document.querySelectorAll('.slide, .page, section, [data-slide-index], [data-page-number], div[id*="slide"], canvas');
+                if (slides && slides.length > 1) return slides.length;
+                var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight);
+                var vh = window.innerHeight || 768;
+                if (totalH > vh * 1.1) return Math.max(1, Math.round(totalH / vh));
+                return 1;
+            })();
+            """
+            webView.evaluateJavaScript(countScript) { [weak self] res, _ in
+                if let detected = res as? Int, detected > 1 {
+                    DispatchQueue.main.async {
+                        if self?.parent.appState.documentTotalPages != detected {
+                            self?.parent.appState.documentTotalPages = detected
+                        }
+                    }
+                }
             }
             if parent.mode == .external {
                 let tvSetup = """
