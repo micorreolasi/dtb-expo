@@ -217,7 +217,7 @@ final class AppState: ObservableObject {
         documentPageAction = .next
         documentNavTriggerId = UUID()
         if documentTotalPages > 1 {
-            documentScrollOffsetRatio.y = CGFloat(documentCurrentPage) / CGFloat(max(1, documentTotalPages - 1))
+            documentScrollOffsetRatio.y = CGFloat(documentCurrentPage) / CGFloat(documentTotalPages)
         } else {
             documentScrollOffsetRatio.y = min(1.0, documentScrollOffsetRatio.y + 0.10)
         }
@@ -231,7 +231,7 @@ final class AppState: ObservableObject {
         documentPageAction = .prev
         documentNavTriggerId = UUID()
         if documentTotalPages > 1 {
-            documentScrollOffsetRatio.y = CGFloat(documentCurrentPage) / CGFloat(max(1, documentTotalPages - 1))
+            documentScrollOffsetRatio.y = CGFloat(documentCurrentPage) / CGFloat(documentTotalPages)
         } else {
             documentScrollOffsetRatio.y = max(0.0, documentScrollOffsetRatio.y - 0.10)
         }
@@ -403,11 +403,7 @@ final class AppState: ObservableObject {
     func handleNextSlide() {
         if isDocumentActive {
             playlist = nil
-            if documentCurrentPage + 1 < documentTotalPages {
-                documentCurrentPage += 1
-            }
-            documentPageAction = .next
-            documentNavTriggerId = UUID()
+            nextDocumentPage()
             return
         }
         guard var pl = playlist, pl.currentIndex < pl.items.count - 1 else { return }
@@ -419,11 +415,7 @@ final class AppState: ObservableObject {
     func handlePrevSlide() {
         if isDocumentActive {
             playlist = nil
-            if documentCurrentPage > 0 {
-                documentCurrentPage -= 1
-            }
-            documentPageAction = .prev
-            documentNavTriggerId = UUID()
+            prevDocumentPage()
             return
         }
         guard var pl = playlist, pl.currentIndex > 0 else { return }

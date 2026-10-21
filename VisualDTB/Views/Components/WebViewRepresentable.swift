@@ -324,68 +324,89 @@ struct WebViewRepresentable: UIViewRepresentable {
             loadURL(in: uiView)
         }
 
-        // 2. Si es la TV externa (modo .external) o vista previa sin tocar, sincronizar el scroll y el zoom
-        let sv = uiView.scrollView
-        if mode == .external || (!sv.isTracking && !sv.isDragging) {
-            // Sincronizar zoom en PPTX / Web si aplica
-            if sv.minimumZoomScale < sv.maximumZoomScale, appState.documentZoomScale > 0 {
-                let targetZoom = max(sv.minimumZoomScale, min(sv.maximumZoomScale, appState.documentZoomScale))
-                if abs(sv.zoomScale - targetZoom) > 0.05 {
-                    sv.setZoomScale(targetZoom, animated: false)
-                }
-            }
-
-            // Sincronizar posición vertical (documentos .key / .pptx usan documentScrollOffsetRatio, web usa webScrollRatio)
-            let maxOffset = max(0, sv.contentSize.height - sv.bounds.height)
-            let activeRatio = appState.isDocumentActive ? scrollOffsetRatio.y : scrollRatio
-            if maxOffset > 0 {
-                let targetY = maxOffset * activeRatio
-                if abs(sv.contentOffset.y - targetY) > 2 {
-                    sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
-                }
-            }
-
-            // Sincronizar scroll por DOM para diapositivas .key en QuickLook y HTML
-            let jsScroll = """
-            (function() {
-                var maxH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - window.innerHeight;
-                if (maxH > 0) {
-                    window.scrollTo({ top: maxH * \(activeRatio), behavior: 'instant' });
-                }
-            })();
-            """
-            uiView.evaluateJavaScript(jsScroll, completionHandler: nil)
-        }
-
-        // 3. Manejo de botones de salto de página (Hoja Siguiente / Anterior en PPTX / Keynote / Documentos Web)
-        if let triggerId = navTriggerId, triggerId != context.coordinator.lastTriggerId {
+        // 2. Manejo prioritario de salto de página (Hoja Siguiente / Anterior en PPTX / Keynote / Documentos Web)
+        let isNavTrigger = (navTriggerId != nil && navTriggerId != context.coordinator.lastTriggerId)
+        if isNavTrigger, let triggerId = navTriggerId {
             context.coordinator.lastTriggerId = triggerId
             let sv = uiView.scrollView
             let maxOffset = max(0, sv.contentSize.height - sv.bounds.height)
-            let pageHeight = max(200, sv.bounds.height > 100 ? sv.bounds.height * 0.95 : UIScreen.main.bounds.height * 0.95)
+            let totalPages = max(1, appState.documentTotalPages)
+            let targetPage = max(0, appState.documentCurrentPage)
 
-            // Desplazamiento por DOM de JavaScript (esencial para presentaciones Keynote y PPTX en QuickLook)
-            let jsSlide: String
-            if navAction == .next {
-                jsSlide = "window.scrollBy({ top: \(pageHeight), behavior: 'smooth' });"
-            } else if navAction == .prev {
-                jsSlide = "window.scrollBy({ top: -\(pageHeight), behavior: 'smooth' });"
-            } else {
-                jsSlide = "window.scrollTo({ top: 0, behavior: 'instant' });"
-            }
+            // Desplazamiento exacto por DOM de JavaScript para alinear perfectamente la diapositiva al inicio del visor
+            let jsSlide = """
+            (function() {
+                var page = \(targetPage);
+                // 1. Si existen elementos individuales de diapositivas en QuickLook / HTML
+                var slides = document.querySelectorAll('.slide, .page, section, [data-slide-index], [data-page-number], div[id*="slide"], canvas');
+                if (slides && slides.length > page && page >= 0) {
+                    slides[page].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    return;
+                }
+                // 2. Si no hay elementos con clases, calcular la posición matemática exacta según la altura del contenido
+                var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight);
+                var count = \(totalPages);
+                if (count > 1) {
+                    var slideH = totalH / count;
+                    var targetY = Math.round(page * slideH);
+                    window.scrollTo({ top: targetY, behavior: 'smooth' });
+                } else {
+                    var vh = window.innerHeight || 768;
+                    window.scrollTo({ top: page * vh, behavior: 'smooth' });
+                }
+            })();
+            """
             uiView.evaluateJavaScript(jsSlide, completionHandler: nil)
 
             if maxOffset > 0 {
-                let currentOffset = sv.contentOffset.y
-                let targetOffset: CGFloat
-                if navAction == .next {
-                    targetOffset = min(maxOffset, currentOffset + pageHeight)
-                } else if navAction == .prev {
-                    targetOffset = max(0, currentOffset - pageHeight)
+                let targetY: CGFloat
+                if totalPages > 1 {
+                    let slideH = sv.contentSize.height / CGFloat(totalPages)
+                    targetY = min(maxOffset, max(0, CGFloat(targetPage) * slideH))
                 } else {
-                    targetOffset = 0
+                    let pageH = sv.bounds.height
+                    targetY = min(maxOffset, max(0, CGFloat(targetPage) * pageH))
                 }
-                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetOffset), animated: true)
+                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: true)
+            }
+        } else {
+            // 3. Sincronización continua de scroll y zoom (para TV externa o cuando el usuario arrastra manualmente la cruceta / barra táctil)
+            let sv = uiView.scrollView
+            if mode == .external || (!sv.isTracking && !sv.isDragging) {
+                // Sincronizar zoom en PPTX / Web si aplica
+                if sv.minimumZoomScale < sv.maximumZoomScale, appState.documentZoomScale > 0 {
+                    let targetZoom = max(sv.minimumZoomScale, min(sv.maximumZoomScale, appState.documentZoomScale))
+                    if abs(sv.zoomScale - targetZoom) > 0.05 {
+                        sv.setZoomScale(targetZoom, animated: false)
+                    }
+                }
+
+                // Sincronizar posición vertical
+                let maxOffset = max(0, sv.contentSize.height - sv.bounds.height)
+                let activeRatio = appState.isDocumentActive ? scrollOffsetRatio.y : scrollRatio
+                if maxOffset > 0 {
+                    let targetY: CGFloat
+                    if appState.isDocumentActive && appState.documentTotalPages > 1 {
+                        let slideH = sv.contentSize.height / CGFloat(appState.documentTotalPages)
+                        targetY = min(maxOffset, max(0, CGFloat(appState.documentCurrentPage) * slideH))
+                    } else {
+                        targetY = maxOffset * activeRatio
+                    }
+                    if abs(sv.contentOffset.y - targetY) > 2 {
+                        sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
+                    }
+                }
+
+                // Sincronizar scroll por DOM para diapositivas .key en QuickLook y HTML
+                let jsScroll = """
+                (function() {
+                    var maxH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - window.innerHeight;
+                    if (maxH > 0) {
+                        window.scrollTo({ top: maxH * \(activeRatio), behavior: 'instant' });
+                    }
+                })();
+                """
+                uiView.evaluateJavaScript(jsScroll, completionHandler: nil)
             }
         }
 
