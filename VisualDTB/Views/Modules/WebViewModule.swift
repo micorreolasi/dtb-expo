@@ -179,7 +179,11 @@ struct WebViewModule: View {
                 ZStack {
                     Color.black
 
-                    WebViewRepresentable(urlString: appState.projection.content, mode: .presentation) { newURL in
+                    WebViewRepresentable(
+                        urlString: appState.projection.content,
+                        mode: .presentation,
+                        scrollRatio: appState.webScrollRatio
+                    ) { newURL in
                         if newURL.starts(with: "http") {
                             appState.webUrl = newURL
                             if appState.projection.content != newURL {

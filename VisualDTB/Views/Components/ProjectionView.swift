@@ -102,7 +102,11 @@ struct ProjectionView: View {
             .id("proj-vid-\(appState.projection.content)")
 
         case .web:
-            WebViewRepresentable(urlString: appState.projection.content, mode: mode)
+            WebViewRepresentable(
+                urlString: appState.projection.content,
+                mode: mode,
+                scrollRatio: appState.webScrollRatio
+            )
 
         case .pdf, .document:
             PDFDocumentView(uri: appState.projection.content, mode: mode)

@@ -245,58 +245,8 @@ struct DocumentsView: View {
                                         .buttonStyle(.plain)
                                     }
 
-                                    // Barra Deslizante para Diapositivas / Keynote (.key)
-                                    VStack(spacing: 8) {
-                                        Text("Deslizar")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundStyle(Theme.textSoft)
-
-                                        Button {
-                                            appState.documentScrollOffsetRatio.y = 0.0
-                                            appState.webScrollRatio = 0.0
-                                            appState.documentCurrentPage = 0
-                                            appState.documentNavTriggerId = UUID()
-                                        } label: {
-                                            Image(systemName: "arrow.up.to.line")
-                                                .font(.system(size: 12, weight: .bold))
-                                                .foregroundStyle(Theme.textSoft)
-                                                .frame(width: 36, height: 28)
-                                                .chip(fill: Theme.border.opacity(0.6), radius: 6)
-                                        }
-                                        .buttonStyle(.plain)
-
-                                        Slider(
-                                            value: Binding(
-                                                get: { appState.documentScrollOffsetRatio.y },
-                                                set: { val in
-                                                    appState.documentScrollOffsetRatio.y = val
-                                                    appState.webScrollRatio = val
-                                                    appState.documentNavTriggerId = UUID()
-                                                }
-                                            ),
-                                            in: 0.0...1.0
-                                        )
-                                        .tint(Theme.blue)
-                                        .frame(width: 120)
-                                        .rotationEffect(.degrees(-90))
-                                        .frame(height: 100)
-
-                                        Button {
-                                            appState.documentScrollOffsetRatio.y = 1.0
-                                            appState.webScrollRatio = 1.0
-                                            appState.documentNavTriggerId = UUID()
-                                        } label: {
-                                            Image(systemName: "arrow.down.to.line")
-                                                .font(.system(size: 12, weight: .bold))
-                                                .foregroundStyle(Theme.textSoft)
-                                                .frame(width: 36, height: 28)
-                                                .chip(fill: Theme.border.opacity(0.6), radius: 6)
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 4)
-                                    .chip(fill: Theme.faint.opacity(0.6), border: Theme.border.opacity(0.5), radius: 10)
+                                    // Barra Táctil Deslizante Lenta (Touch Drag Strip)
+                                    VerticalTouchScrollTrackView()
                                 }
                                 .padding(.vertical, 8)
                             }
@@ -499,3 +449,109 @@ struct DocumentsView: View {
         }
     }
 }
+
+/// Barra Táctil de Desplazamiento Continuo y Lento para Diapositivas (.key, .pptx, PDFs largos)
+/// Funciona como tocar el cristal de la pantalla: arrastras con el dedo y avanza/retrocede con suavidad
+struct VerticalTouchScrollTrackView: View {
+    @EnvironmentObject var appState: AppState
+    @State private var dragOffset: CGFloat = 0
+    @State private var lastDragY: CGFloat = 0
+    @State private var isDragging: Bool = false
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text("Touch")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Theme.textSoft)
+
+            // Botón subir lento (nudge)
+            Button {
+                appState.scrollDocumentTouch(deltaY: 15)
+            } label: {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.textSoft)
+                    .frame(width: 44, height: 26)
+                    .chip(fill: Theme.border.opacity(0.6), radius: 6)
+            }
+            .buttonStyle(.plain)
+
+            // Pista Táctil de Desplazamiento Continuo (Touch Trackpad)
+            ZStack {
+                // Fondo de la pista táctil
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Theme.faint.opacity(0.7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(isDragging ? Theme.blue.opacity(0.8) : Theme.border, lineWidth: 1.5)
+                    )
+                    .frame(width: 46, height: 114)
+
+                // Ranuras táctiles de fricción visual
+                VStack(spacing: 8) {
+                    Capsule().fill(Theme.border.opacity(0.5)).frame(width: 14, height: 2)
+                    Capsule().fill(Theme.border.opacity(0.5)).frame(width: 14, height: 2)
+                    Capsule().fill(Theme.border.opacity(0.5)).frame(width: 14, height: 2)
+                }
+
+                // Puck / Mango táctil interactivo que reacciona al tacto
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(isDragging ? Theme.blue : Theme.panel)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(isDragging ? Color.white.opacity(0.6) : Theme.border.opacity(0.8), lineWidth: 1)
+                    )
+                    .overlay(
+                        VStack(spacing: 2) {
+                            Capsule().fill(isDragging ? Color.white : Theme.textSoft).frame(width: 16, height: 2)
+                            Capsule().fill(isDragging ? Color.white : Theme.textSoft).frame(width: 16, height: 2)
+                        }
+                    )
+                    .frame(width: 38, height: 30)
+                    .offset(y: dragOffset)
+                    .shadow(color: Color.black.opacity(0.25), radius: 2, y: 1)
+            }
+            .frame(width: 46, height: 114)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if !isDragging {
+                            isDragging = true
+                            lastDragY = value.translation.height
+                        }
+                        let deltaY = value.translation.height - lastDragY
+                        lastDragY = value.translation.height
+                        
+                        // Resistencia elástica visual en el mango táctil
+                        dragOffset = max(-36, min(36, dragOffset + (deltaY * 0.35)))
+                        
+                        // Desplazamiento fino, lento y continuo del documento
+                        appState.scrollDocumentTouch(deltaY: deltaY)
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                        lastDragY = 0
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                            dragOffset = 0
+                        }
+                    }
+            )
+
+            // Botón bajar lento (nudge)
+            Button {
+                appState.scrollDocumentTouch(deltaY: -15)
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.textSoft)
+                    .frame(width: 44, height: 26)
+                    .chip(fill: Theme.border.opacity(0.6), radius: 6)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(6)
+        .chip(fill: Theme.panel, border: Theme.border.opacity(0.6), radius: 12)
+    }
+}
+

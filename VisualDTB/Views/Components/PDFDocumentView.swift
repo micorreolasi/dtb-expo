@@ -24,6 +24,8 @@ struct PDFDocumentView: View {
             WebViewRepresentable(
                 urlString: uri,
                 mode: mode,
+                scrollRatio: appState.isDocumentActive ? appState.documentScrollOffsetRatio.y : appState.webScrollRatio,
+                scrollOffsetRatio: appState.documentScrollOffsetRatio,
                 navAction: appState.documentPageAction,
                 navTriggerId: appState.documentNavTriggerId
             )

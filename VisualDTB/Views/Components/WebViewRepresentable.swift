@@ -1,10 +1,17 @@
 import SwiftUI
 import WebKit
 
+/// Entorno global compartido para WebKit (misma caché, almacenamiento y pool de procesos entre iPad y TV)
+final class WebKitEnvironment {
+    static let sharedProcessPool = WKProcessPool()
+}
+
 struct WebViewRepresentable: UIViewRepresentable {
     @EnvironmentObject var appState: AppState
     let urlString: String
     var mode: ProjectionMode = .presentation
+    var scrollRatio: CGFloat = 0.0
+    var scrollOffsetRatio: CGPoint = .zero
     var onNavigation: ((String) -> Void)? = nil
     var navAction: DocumentNavAction? = nil
     var navTriggerId: UUID? = nil
@@ -15,6 +22,8 @@ struct WebViewRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
+        config.processPool = WebKitEnvironment.sharedProcessPool
+        config.websiteDataStore = WKWebsiteDataStore.default()
         config.allowsInlineMediaPlayback = true
         config.allowsPictureInPictureMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
@@ -64,13 +73,20 @@ struct WebViewRepresentable: UIViewRepresentable {
                     }, true);
                 }
 
-                // Reflejar clics, reproducciones y cierre de popups desde el iPad hacia la TV
+                // Reflejar toques, clics, reproducciones y cierre de popups desde el iPad hacia la TV
                 function setupClickMirror() {
-                    document.addEventListener('click', function(e) {
+                    var lastMirrorTime = 0;
+                    function handleMirror(e) {
+                        var now = Date.now();
+                        if (now - lastMirrorTime < 120) return;
+                        lastMirrorTime = now;
                         var target = e.target;
                         if (!target) return;
-                        var xR = e.clientX / window.innerWidth;
-                        var yR = e.clientY / window.innerHeight;
+                        var touch = e.changedTouches ? e.changedTouches[0] : e;
+                        var clientX = touch.clientX || (window.innerWidth * 0.5);
+                        var clientY = touch.clientY || (window.innerHeight * 0.5);
+                        var xR = clientX / window.innerWidth;
+                        var yR = clientY / window.innerHeight;
                         var sel = '';
                         if (target.id) {
                             sel = '#' + target.id;
@@ -87,7 +103,10 @@ struct WebViewRepresentable: UIViewRepresentable {
                                 selector: sel
                             });
                         }
-                    }, true);
+                    }
+
+                    document.addEventListener('touchend', handleMirror, true);
+                    document.addEventListener('click', handleMirror, true);
                 }
 
                 // Sincronización segura de eventos de video iPad -> TV (anti-bucle y anti-bloqueo)
@@ -190,9 +209,8 @@ struct WebViewRepresentable: UIViewRepresentable {
         }
 
         // 2. Si es la TV externa (modo .external) o vista previa sin tocar, sincronizar el scroll y el zoom
-        if mode == .external || (mode == .miniPreview && !uiView.scrollView.isTracking && !uiView.scrollView.isDragging) {
-            let sv = uiView.scrollView
-
+        let sv = uiView.scrollView
+        if mode == .external || (!sv.isTracking && !sv.isDragging) {
             // Sincronizar zoom en PPTX / Web si aplica
             if sv.minimumZoomScale < sv.maximumZoomScale, appState.documentZoomScale > 0 {
                 let targetZoom = max(sv.minimumZoomScale, min(sv.maximumZoomScale, appState.documentZoomScale))
@@ -203,13 +221,24 @@ struct WebViewRepresentable: UIViewRepresentable {
 
             // Sincronizar posición vertical (documentos .key / .pptx usan documentScrollOffsetRatio, web usa webScrollRatio)
             let maxOffset = max(0, sv.contentSize.height - sv.bounds.height)
+            let activeRatio = appState.isDocumentActive ? scrollOffsetRatio.y : scrollRatio
             if maxOffset > 0 {
-                let activeRatio = appState.isDocumentActive ? appState.documentScrollOffsetRatio.y : appState.webScrollRatio
                 let targetY = maxOffset * activeRatio
                 if abs(sv.contentOffset.y - targetY) > 2 {
                     sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
                 }
             }
+
+            // Sincronizar scroll por DOM para diapositivas .key en QuickLook y HTML
+            let jsScroll = """
+            (function() {
+                var maxH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - window.innerHeight;
+                if (maxH > 0) {
+                    window.scrollTo({ top: maxH * \(activeRatio), behavior: 'instant' });
+                }
+            })();
+            """
+            uiView.evaluateJavaScript(jsScroll, completionHandler: nil)
         }
 
         // 3. Manejo de botones de salto de página (Hoja Siguiente / Anterior en PPTX / Keynote / Documentos Web)
@@ -274,6 +303,10 @@ struct WebViewRepresentable: UIViewRepresentable {
                         iframes[j].contentWindow.postMessage('{"method":"play"}', '*');
                         iframes[j].contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
                     } catch(e) {}
+                }
+                var playBtns = document.querySelectorAll('.vp-play-button, .play, button[data-title-play], .ytp-play-button[aria-label*="Play" i], .ytp-play-button[aria-label*="Reproducir" i]');
+                for (var k = 0; k < playBtns.length; k++) {
+                    try { playBtns[k].click(); } catch(e) {}
                 }
                 try {
                     if (window.player && typeof window.player.play === 'function') {
@@ -405,85 +438,28 @@ struct WebViewRepresentable: UIViewRepresentable {
         case .toggleFullscreen:
             let js = """
             (function() {
-                var existing = document.getElementById('dtb-fullscreen-style');
-                if (existing) {
-                    existing.remove();
-                    var ytFsBtn = document.querySelector('.ytp-fullscreen-button');
-                    if (ytFsBtn && ytFsBtn.getAttribute('title') && ytFsBtn.getAttribute('title').toLowerCase().indexOf('salir') !== -1) {
-                        try { ytFsBtn.click(); } catch(e) {}
+                // 1. Intentar botón de pantalla completa propio del reproductor (Vimeo / YouTube)
+                var vimeoFsBtn = document.querySelector('.vp-fullscreen-button');
+                if (vimeoFsBtn) {
+                    try { vimeoFsBtn.click(); return; } catch(e) {}
+                }
+                var ytFsBtn = document.querySelector('.ytp-fullscreen-button');
+                if (ytFsBtn) {
+                    try { ytFsBtn.click(); return; } catch(e) {}
+                }
+                // 2. Intentar API nativa webkitEnterFullscreen en <video>
+                var vids = document.querySelectorAll('video');
+                for (var i = 0; i < vids.length; i++) {
+                    if (vids[i].webkitEnterFullscreen) {
+                        try { vids[i].webkitEnterFullscreen(); return; } catch(e) {}
                     }
-                    var vimeoFsBtn = document.querySelector('.vp-fullscreen-button');
-                    if (vimeoFsBtn) {
-                        try { vimeoFsBtn.click(); } catch(e) {}
-                    }
-                    var activeElements = document.querySelectorAll('.dtb-fullscreen-active');
-                    for (var i = 0; i < activeElements.length; i++) {
-                        activeElements[i].classList.remove('dtb-fullscreen-active');
-                    }
-                } else {
-                    var style = document.createElement('style');
-                    style.id = 'dtb-fullscreen-style';
-                    style.textContent = `
-                        video,
-                        .html5-video-player,
-                        #player,
-                        .video-stream,
-                        .player-container,
-                        #movie_player,
-                        .vp-video-wrapper,
-                        .vp-video,
-                        .player,
-                        div[data-player],
-                        div[data-vimeo-initialized],
-                        iframe[src*="vimeo.com"],
-                        iframe[src*="player.vimeo.com"],
-                        iframe[src*="youtube.com"],
-                        .dtb-fullscreen-active {
-                            position: fixed !important;
-                            top: 0 !important;
-                            left: 0 !important;
-                            width: 100vw !important;
-                            height: 100vh !important;
-                            max-width: 100vw !important;
-                            max-height: 100vh !important;
-                            padding: 0 !important;
-                            margin: 0 !important;
-                            z-index: 2147483640 !important;
-                            background: black !important;
-                            object-fit: contain !important;
-                            box-sizing: border-box !important;
-                        }
-                        .vp-controls-wrapper,
-                        .vp-controls,
-                        .ytp-chrome-bottom,
-                        .ytp-chrome-top,
-                        .vjs-control-bar {
-                            z-index: 2147483647 !important;
-                        }
-                        body, html {
-                            overflow: hidden !important;
-                            background: black !important;
-                        }
-                    `;
-                    document.head.appendChild(style);
-
-                    // Detectar y maximizar videos y contenedores
-                    var vids = document.querySelectorAll('video');
-                    for (var i = 0; i < vids.length; i++) {
-                        var v = vids[i];
-                        v.classList.add('dtb-fullscreen-active');
-                        v.style.setProperty('object-fit', 'contain', 'important');
-                        var parent = v.closest('.vp-video-wrapper, .player, div[data-player], .html5-video-player, .player-container');
-                        if (parent) {
-                            parent.classList.add('dtb-fullscreen-active');
-                            parent.style.setProperty('padding', '0', 'important');
-                            parent.style.setProperty('height', '100vh', 'important');
-                        }
-                    }
-                    var iframes = document.querySelectorAll('iframe[src*="vimeo"], iframe[src*="youtube"], iframe[src*="player"]');
-                    for (var j = 0; j < iframes.length; j++) {
-                        iframes[j].classList.add('dtb-fullscreen-active');
-                    }
+                }
+                // 3. PostMessage a iframes embebidos
+                var iframes = document.querySelectorAll('iframe');
+                for (var j = 0; j < iframes.length; j++) {
+                    try {
+                        iframes[j].contentWindow.postMessage('{"method":"requestFullscreen"}', '*');
+                    } catch(e) {}
                 }
             })();
             """
@@ -498,7 +474,7 @@ struct WebViewRepresentable: UIViewRepresentable {
                 if (cookieBtn) {
                     try { cookieBtn.click(); } catch(e) {}
                 }
-                var modals = document.querySelectorAll('#credential_picker_container, .onetrust-pc-dark-filter, #onetrust-consent-sdk');
+                var modals = document.querySelectorAll('#credential_picker_container, .onetrust-pc-dark-filter, #onetrust-consent-sdk, .cookie-banner');
                 for (var i = 0; i < modals.length; i++) {
                     modals[i].remove();
                 }
@@ -509,29 +485,63 @@ struct WebViewRepresentable: UIViewRepresentable {
         case .mirrorClick(let xRatio, let yRatio, let selector):
             let js = """
             (function() {
+                // 1. Eliminar popup de Google si estuviera visible
                 var gp = document.getElementById('credential_picker_container') || document.querySelector('iframe[src*="accounts.google.com/gsi"]');
-                if (gp && \(xRatio) > 0.6 && \(yRatio) < 0.3) {
+                if (gp) {
                     gp.remove();
-                    return;
+                    if (\(xRatio) > 0.5 && \(yRatio) < 0.35) return;
                 }
+
+                // 2. Click por selector directo si existe
                 if ('\(selector)' && '\(selector)' !== '') {
                     try {
                         var elSel = document.querySelector('\(selector)');
                         if (elSel) {
                             elSel.click();
+                            var pBtn = elSel.closest('button, a, [role="button"], video, .play, .vp-play-button');
+                            if (pBtn && pBtn !== elSel) pBtn.click();
                             return;
                         }
                     } catch(e) {}
                 }
+
+                // 3. Simulación de toque y click en la coordenada proporcional
                 var x = window.innerWidth * \(xRatio);
                 var y = window.innerHeight * \(yRatio);
                 var el = document.elementFromPoint(x, y);
                 if (el) {
                     try {
                         el.click();
-                        var btn = el.closest('button, a, [role="button"]');
-                        if (btn) btn.click();
+                        var btn = el.closest('button, a, [role="button"], video, .play, .vp-play-button');
+                        if (btn && btn !== el) btn.click();
                     } catch(e) {}
+                }
+
+                // 4. Si el toque fue en el área del reproductor, garantizar reproducción
+                if (\(xRatio) > 0.10 && \(xRatio) < 0.90 && \(yRatio) > 0.10 && \(yRatio) < 0.90) {
+                    var vids = document.querySelectorAll('video');
+                    for (var i = 0; i < vids.length; i++) {
+                        vids[i].setAttribute('playsinline', '');
+                        vids[i].setAttribute('webkit-playsinline', '');
+                        try {
+                            if (vids[i].paused) {
+                                var p = vids[i].play();
+                                if (p && p.catch) {
+                                    p.catch(function() {
+                                        vids[i].muted = true;
+                                        vids[i].play();
+                                    });
+                                }
+                            }
+                        } catch(e) {}
+                    }
+                    var iframes = document.querySelectorAll('iframe');
+                    for (var j = 0; j < iframes.length; j++) {
+                        try {
+                            iframes[j].contentWindow.postMessage('{"method":"play"}', '*');
+                            iframes[j].contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+                        } catch(e) {}
+                    }
                 }
             })();
             """
@@ -607,6 +617,9 @@ struct WebViewRepresentable: UIViewRepresentable {
             let ratio = max(0.0, min(1.0, scrollView.contentOffset.y / maxOffset))
             DispatchQueue.main.async {
                 self.parent.appState.webScrollRatio = ratio
+                if self.parent.appState.isDocumentActive {
+                    self.parent.appState.documentScrollOffsetRatio.y = ratio
+                }
             }
         }
 
