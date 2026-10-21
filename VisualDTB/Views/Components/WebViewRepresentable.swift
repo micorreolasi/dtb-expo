@@ -55,11 +55,20 @@ struct WebViewRepresentable: UIViewRepresentable {
                 // Detección precisa de diapositivas en presentaciones (.key, .pptx, QuickLook)
                 function detectDocumentPages() {
                     try {
-                        var slides = document.querySelectorAll('.slide, .page, section, [data-slide-index], [data-page-number], div[id*="slide"], canvas');
-                        var count = 0;
-                        if (slides && slides.length > 1) {
-                            count = slides.length;
-                        } else {
+                        var candidates = document.querySelectorAll('.quicklook-page, .presentation-slide, [class*="slide-container"], [data-slide-index], body > div, body > section, #content > div, main > div');
+                        var realSlides = [];
+                        for (var i = 0; i < candidates.length; i++) {
+                            var el = candidates[i];
+                            var isNested = false;
+                            for (var j = 0; j < realSlides.length; j++) {
+                                if (realSlides[j].contains(el)) { isNested = true; break; }
+                            }
+                            if (!isNested && el.offsetHeight >= 200 && el.offsetWidth >= 300) {
+                                realSlides.push(el);
+                            }
+                        }
+                        var count = realSlides.length;
+                        if (count <= 1) {
                             var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight);
                             var vh = window.innerHeight || 768;
                             if (totalH > vh * 1.1) {
@@ -271,8 +280,79 @@ struct WebViewRepresentable: UIViewRepresentable {
                     });
                 }
 
+                // Polyfill Fullscreen API para YouTube (evita el aviso de "Tu navegador no admite la pantalla completa")
+                try {
+                    if (!document.fullscreenEnabled) {
+                        Object.defineProperty(document, 'fullscreenEnabled', { get: function() { return true; }, configurable: true });
+                    }
+                    if (!document.webkitFullscreenEnabled) {
+                        Object.defineProperty(document, 'webkitFullscreenEnabled', { get: function() { return true; }, configurable: true });
+                    }
+                    if (!Element.prototype.requestFullscreen) {
+                        Element.prototype.requestFullscreen = function() {
+                            var v = this.querySelector('video') || this;
+                            if (v && v.webkitEnterFullscreen) {
+                                try { v.webkitEnterFullscreen(); } catch(e) {}
+                            }
+                            return Promise.resolve();
+                        };
+                    }
+                    if (!Element.prototype.webkitRequestFullscreen) {
+                        Element.prototype.webkitRequestFullscreen = Element.prototype.requestFullscreen;
+                    }
+                } catch(e) {}
+
+                // Omitir anuncios de YouTube automáticamente e inmediatamente
+                function autoSkipYouTubeAds() {
+                    try {
+                        var ad = document.querySelector('.ad-showing, .ad-interrupting');
+                        var vids = document.querySelectorAll('video');
+                        if (ad && vids.length > 0) {
+                            for (var i = 0; i < vids.length; i++) {
+                                if (vids[i] && !isNaN(vids[i].duration) && vids[i].duration > 0) {
+                                    vids[i].currentTime = vids[i].duration;
+                                }
+                            }
+                        }
+                        var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .videoAdUiSkipButton');
+                        if (skipBtn) {
+                            skipBtn.click();
+                        }
+                    } catch(e) {}
+                }
+
+                // Ocultar anuncios visuales y banners de YouTube
+                function injectCleanStyles() {
+                    if (document.getElementById('dtb-global-clean-style')) return;
+                    var style = document.createElement('style');
+                    style.id = 'dtb-global-clean-style';
+                    style.textContent = `
+                        .video-ads,
+                        .ytp-ad-module,
+                        .ytp-ad-overlay-container,
+                        .ytp-ad-player-overlay,
+                        .ytp-ad-image-overlay,
+                        .ytp-ad-text-overlay,
+                        .ytp-fullscreen-quick-action,
+                        .ytp-bezel[role="status"],
+                        .ytp-bezel-text,
+                        div[class*="upsell-dialog"],
+                        yt-upsell-dialog-renderer,
+                        #credential_picker_container,
+                        iframe[src*="accounts.google.com/gsi"] {
+                            display: none !important;
+                            visibility: hidden !important;
+                            pointer-events: none !important;
+                        }
+                    `;
+                    if (document.head) document.head.appendChild(style);
+                }
+
+                setInterval(autoSkipYouTubeAds, 250);
+
                 if (document.readyState === 'loading') {
                     document.addEventListener('DOMContentLoaded', function() {
+                        injectCleanStyles();
                         setupClickMirror();
                         setupVideoSync();
                         setupUrlChangeSync();
@@ -281,6 +361,7 @@ struct WebViewRepresentable: UIViewRepresentable {
                         setTimeout(detectDocumentPages, 1000);
                     });
                 } else {
+                    injectCleanStyles();
                     setupClickMirror();
                     setupVideoSync();
                     setupUrlChangeSync();
@@ -333,44 +414,55 @@ struct WebViewRepresentable: UIViewRepresentable {
             let totalPages = max(1, appState.documentTotalPages)
             let targetPage = max(0, appState.documentCurrentPage)
 
-            // Desplazamiento exacto por DOM de JavaScript para alinear perfectamente la diapositiva al inicio del visor
+            // Desplazamiento exacto por DOM de JavaScript buscando contenedores reales de diapositivas
             let jsSlide = """
             (function() {
-                var page = \(targetPage);
-                // 1. Si existen elementos individuales de diapositivas en QuickLook / HTML
-                var slides = document.querySelectorAll('.slide, .page, section, [data-slide-index], [data-page-number], div[id*="slide"], canvas');
-                if (slides && slides.length > page && page >= 0) {
-                    slides[page].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                var targetIdx = \(targetPage);
+                // Buscar candidatos a diapositivas reales (evitar formas internas, spans o iconos)
+                var candidates = document.querySelectorAll('.quicklook-page, .presentation-slide, [class*="slide-container"], [data-slide-index], body > div, body > section, #content > div, main > div');
+                var realSlides = [];
+                for (var i = 0; i < candidates.length; i++) {
+                    var el = candidates[i];
+                    var isNested = false;
+                    for (var j = 0; j < realSlides.length; j++) {
+                        if (realSlides[j].contains(el)) { isNested = true; break; }
+                    }
+                    if (!isNested && el.offsetHeight >= 200 && el.offsetWidth >= 300) {
+                        realSlides.push(el);
+                    }
+                }
+
+                if (realSlides.length > targetIdx && targetIdx >= 0) {
+                    var targetEl = realSlides[targetIdx];
+                    var currentScroll = window.pageYOffset || document.documentElement.scrollTop || 0;
+                    var rect = targetEl.getBoundingClientRect();
+                    var exactY = Math.round(rect.top + currentScroll);
+                    window.scrollTo({ top: exactY, behavior: 'smooth' });
                     return;
                 }
-                // 2. Si no hay elementos con clases, calcular la posición matemática exacta según la altura del contenido
+
+                // Fallback matemático exacto si el documento se renderiza en un solo canvas/body
                 var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight);
                 var count = \(totalPages);
                 if (count > 1) {
                     var slideH = totalH / count;
-                    var targetY = Math.round(page * slideH);
+                    var targetY = Math.round(targetIdx * slideH);
                     window.scrollTo({ top: targetY, behavior: 'smooth' });
                 } else {
                     var vh = window.innerHeight || 768;
-                    window.scrollTo({ top: page * vh, behavior: 'smooth' });
+                    window.scrollTo({ top: targetIdx * vh, behavior: 'smooth' });
                 }
             })();
             """
             uiView.evaluateJavaScript(jsSlide, completionHandler: nil)
 
-            if maxOffset > 0 {
-                let targetY: CGFloat
-                if totalPages > 1 {
-                    let slideH = sv.contentSize.height / CGFloat(totalPages)
-                    targetY = min(maxOffset, max(0, CGFloat(targetPage) * slideH))
-                } else {
-                    let pageH = sv.bounds.height
-                    targetY = min(maxOffset, max(0, CGFloat(targetPage) * pageH))
-                }
+            if maxOffset > 0 && totalPages > 1 {
+                let slideH = sv.contentSize.height / CGFloat(totalPages)
+                let targetY = min(maxOffset, max(0, CGFloat(targetPage) * slideH))
                 sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: true)
             }
         } else {
-            // 3. Sincronización continua de scroll y zoom (para TV externa o cuando el usuario arrastra manualmente la cruceta / barra táctil)
+            // 3. Desplazamiento continuo, suave y natural (Cruceta / Barra Táctil / Touch Drag)
             let sv = uiView.scrollView
             if mode == .external || (!sv.isTracking && !sv.isDragging) {
                 // Sincronizar zoom en PPTX / Web si aplica
@@ -381,23 +473,17 @@ struct WebViewRepresentable: UIViewRepresentable {
                     }
                 }
 
-                // Sincronizar posición vertical
+                // Sincronizar posición vertical CONTINUA usando activeRatio (Cruceta / Slider Táctil)
                 let maxOffset = max(0, sv.contentSize.height - sv.bounds.height)
                 let activeRatio = appState.isDocumentActive ? scrollOffsetRatio.y : scrollRatio
                 if maxOffset > 0 {
-                    let targetY: CGFloat
-                    if appState.isDocumentActive && appState.documentTotalPages > 1 {
-                        let slideH = sv.contentSize.height / CGFloat(appState.documentTotalPages)
-                        targetY = min(maxOffset, max(0, CGFloat(appState.documentCurrentPage) * slideH))
-                    } else {
-                        targetY = maxOffset * activeRatio
-                    }
-                    if abs(sv.contentOffset.y - targetY) > 2 {
+                    let targetY = maxOffset * activeRatio
+                    if abs(sv.contentOffset.y - targetY) > 1 {
                         sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
                     }
                 }
 
-                // Sincronizar scroll por DOM para diapositivas .key en QuickLook y HTML
+                // Sincronizar scroll continuo por DOM
                 let jsScroll = """
                 (function() {
                     var maxH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - window.innerHeight;
@@ -944,8 +1030,19 @@ struct WebViewRepresentable: UIViewRepresentable {
             // Detección automática del número de páginas en presentaciones (.key, .pptx)
             let countScript = """
             (function() {
-                var slides = document.querySelectorAll('.slide, .page, section, [data-slide-index], [data-page-number], div[id*="slide"], canvas');
-                if (slides && slides.length > 1) return slides.length;
+                var candidates = document.querySelectorAll('.quicklook-page, .presentation-slide, [class*="slide-container"], [data-slide-index], body > div, body > section, #content > div, main > div');
+                var realSlides = [];
+                for (var i = 0; i < candidates.length; i++) {
+                    var el = candidates[i];
+                    var isNested = false;
+                    for (var j = 0; j < realSlides.length; j++) {
+                        if (realSlides[j].contains(el)) { isNested = true; break; }
+                    }
+                    if (!isNested && el.offsetHeight >= 200 && el.offsetWidth >= 300) {
+                        realSlides.push(el);
+                    }
+                }
+                if (realSlides.length > 1) return realSlides.length;
                 var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight);
                 var vh = window.innerHeight || 768;
                 if (totalH > vh * 1.1) return Math.max(1, Math.round(totalH / vh));
@@ -975,7 +1072,18 @@ struct WebViewRepresentable: UIViewRepresentable {
                         #onetrust-consent-sdk,
                         .cookie-banner,
                         div[class*="cookie-notice"],
-                        div[class*="consent-banner"] {
+                        div[class*="consent-banner"],
+                        .video-ads,
+                        .ytp-ad-module,
+                        .ytp-ad-overlay-container,
+                        .ytp-ad-player-overlay,
+                        .ytp-ad-image-overlay,
+                        .ytp-ad-text-overlay,
+                        .ytp-fullscreen-quick-action,
+                        .ytp-bezel[role="status"],
+                        .ytp-bezel-text,
+                        div[class*="upsell-dialog"],
+                        yt-upsell-dialog-renderer {
                             display: none !important;
                             visibility: hidden !important;
                             pointer-events: none !important;
@@ -989,6 +1097,26 @@ struct WebViewRepresentable: UIViewRepresentable {
                     }
                     cleanPopups();
                     setInterval(cleanPopups, 1500);
+
+                    // Omitir anuncios de YouTube en la TV inmediatamente
+                    function autoSkipAdsTV() {
+                        try {
+                            var ad = document.querySelector('.ad-showing, .ad-interrupting');
+                            var vids = document.querySelectorAll('video');
+                            if (ad && vids.length > 0) {
+                                for (var i = 0; i < vids.length; i++) {
+                                    if (vids[i] && !isNaN(vids[i].duration) && vids[i].duration > 0) {
+                                        vids[i].currentTime = vids[i].duration;
+                                    }
+                                }
+                            }
+                            var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .videoAdUiSkipButton');
+                            if (skipBtn) {
+                                skipBtn.click();
+                            }
+                        } catch(e) {}
+                    }
+                    setInterval(autoSkipAdsTV, 200);
 
                     // Sincronización automática de videos y reproducción en TV
                     var autoplayCount = 0;

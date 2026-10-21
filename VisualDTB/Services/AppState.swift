@@ -258,14 +258,14 @@ final class AppState: ObservableObject {
         let totalPages = max(1, documentTotalPages)
         let pageFraction = 1.0 / CGFloat(totalPages)
         // Sensibilidad suave para avance natural de hojas
-        let sensitivity: CGFloat = (pageFraction * 0.006)
+        let sensitivity: CGFloat = (pageFraction * 0.005)
         let factor: CGFloat = isNaturalScroll ? -1.0 : 1.0
         let change = deltaY * factor * max(0.0003, sensitivity)
         let newRatio = max(0.0, min(1.0, documentScrollOffsetRatio.y + change))
         documentScrollOffsetRatio.y = newRatio
         webScrollRatio = newRatio
-        // Actualizar la hoja actual según la posición relativa sin disparar falsos saltos
-        let calculatedPage = min(totalPages - 1, Int(round(newRatio * CGFloat(max(1, totalPages - 1)))))
+        // Actualizar la hoja actual según la posición relativa sin disparar saltos
+        let calculatedPage = min(totalPages - 1, max(0, Int(floor(newRatio * CGFloat(totalPages)))))
         if documentCurrentPage != calculatedPage {
             documentCurrentPage = calculatedPage
         }
