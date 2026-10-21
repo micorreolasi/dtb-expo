@@ -190,8 +190,8 @@ struct WebViewRepresentable: UIViewRepresentable {
         webView.backgroundColor = .black
         webView.isOpaque = false
 
-        // User Agent optimizado para iPad que previene redirecciones circulares en YouTube
-        webView.customUserAgent = "Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
+        // User Agent de escritorio para garantizar que iPad y TV carguen exactamente la misma versión y diseño de la página
+        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
 
         context.coordinator.lastLoadedURL = urlString
         loadURL(in: webView)

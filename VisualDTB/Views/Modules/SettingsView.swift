@@ -101,7 +101,100 @@ struct SettingsView: View {
                 .padding(16)
                 .chip(fill: Theme.panel, border: Theme.border, radius: 10)
 
-                // SECCIÓN 2: PANTALLA EXTERNA
+                // SECCIÓN 2: DESPLAZAMIENTO TÁCTIL EN DOCUMENTOS
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Image(systemName: "hand.draw")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Theme.blue)
+                        Text("Dirección de Desplazamiento Táctil")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Theme.textBright)
+                        Spacer()
+                    }
+
+                    Text("Configura el sentido de la barra táctil para diapositivas (.key, .pptx) y documentos.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.muted)
+
+                    HStack(spacing: 12) {
+                        // Natural
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                appState.isNaturalScroll = true
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.up.and.down")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(Theme.blue)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Natural")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(appState.isNaturalScroll ? Theme.blue : Theme.text)
+                                    Text("Dedo sube, contenido sube")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Theme.dim)
+                                }
+                                Spacer()
+
+                                if appState.isNaturalScroll {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Theme.blue)
+                                }
+                            }
+                            .padding(12)
+                            .chip(
+                                fill: appState.isNaturalScroll ? Theme.blue.opacity(0.12) : Theme.bgDeep,
+                                border: appState.isNaturalScroll ? Theme.blue : Theme.border,
+                                radius: 8,
+                                lineWidth: appState.isNaturalScroll ? 2 : 1
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        // Invertido
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                appState.isNaturalScroll = false
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.up.and.down.circle")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(Theme.sky)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Invertido")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(!appState.isNaturalScroll ? Theme.sky : Theme.text)
+                                    Text("Dedo baja, contenido sube")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Theme.dim)
+                                }
+                                Spacer()
+
+                                if !appState.isNaturalScroll {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Theme.sky)
+                                }
+                            }
+                            .padding(12)
+                            .chip(
+                                fill: !appState.isNaturalScroll ? Theme.blue.opacity(0.15) : Theme.bgDeep,
+                                border: !appState.isNaturalScroll ? Theme.sky : Theme.border,
+                                radius: 8,
+                                lineWidth: !appState.isNaturalScroll ? 2 : 1
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(16)
+                .chip(fill: Theme.panel, border: Theme.border, radius: 10)
+
+                // SECCIÓN 3: PANTALLA EXTERNA
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
                         Image(systemName: "tv")

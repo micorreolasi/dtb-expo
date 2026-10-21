@@ -175,24 +175,38 @@ struct WebViewModule: View {
                 .background(Theme.bg)
                 .bottomBorder(Theme.border)
 
-                // Visualización 1:1 con la TV (proporción exacta de la pantalla externa)
-                ZStack {
-                    Color.black
+                // Visualización 1:1 con la TV (renderizado al pixelaje exacto de la TV escalado en iPad)
+                GeometryReader { geo in
+                    let targetW = max(640, appState.externalDisplayResolution.width)
+                    let targetH = max(360, appState.externalDisplayResolution.height)
+                    let scaleX = geo.size.width / targetW
+                    let scaleY = geo.size.height / targetH
+                    let scale = max(0.1, min(scaleX, scaleY))
+                    let renderedW = targetW * scale
+                    let renderedH = targetH * scale
 
-                    WebViewRepresentable(
-                        urlString: appState.projection.content,
-                        mode: .presentation,
-                        scrollRatio: appState.webScrollRatio
-                    ) { newURL in
-                        if newURL.starts(with: "http") {
-                            appState.webUrl = newURL
-                            if appState.projection.content != newURL {
-                                appState.projection = ProjectionData(type: .web, content: newURL)
+                    ZStack {
+                        Color.black
+
+                        WebViewRepresentable(
+                            urlString: appState.projection.content,
+                            mode: .presentation,
+                            scrollRatio: appState.webScrollRatio
+                        ) { newURL in
+                            if newURL.starts(with: "http") {
+                                appState.webUrl = newURL
+                                if appState.projection.content != newURL {
+                                    appState.projection = ProjectionData(type: .web, content: newURL)
+                                }
                             }
                         }
+                        .frame(width: targetW, height: targetH)
+                        .scaleEffect(scale, anchor: .center)
+                        .frame(width: renderedW, height: renderedH)
                     }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .background(Color.black)
                 }
-                .aspectRatio(appState.externalDisplayAspectRatio, contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)
             }

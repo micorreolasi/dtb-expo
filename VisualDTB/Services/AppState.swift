@@ -242,13 +242,18 @@ final class AppState: ObservableObject {
         documentNavTriggerId = UUID()
     }
 
+    // MARK: - Ajuste de Desplazamiento Táctil
+    @Published var isNaturalScroll: Bool = UserDefaults.standard.object(forKey: "isNaturalScroll") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(isNaturalScroll, forKey: "isNaturalScroll")
+        }
+    }
+
     /// Desplazamiento táctil fino, continuo y lento tipo pantalla táctil
     func scrollDocumentTouch(deltaY: CGFloat) {
-        // deltaY: desplazamiento del gesto (en puntos)
-        // Arrastrar hacia arriba (deltaY < 0) hace que el contenido suba (aumenta offset vertical)
-        // Arrastrar hacia abajo (deltaY > 0) hace que el contenido baje (disminuye offset vertical)
         let sensitivity: CGFloat = 0.0016 // Movimiento lento y controlado
-        let change = -(deltaY * sensitivity)
+        let factor: CGFloat = isNaturalScroll ? -1.0 : 1.0
+        let change = deltaY * factor * sensitivity
         let newRatio = max(0.0, min(1.0, documentScrollOffsetRatio.y + change))
         documentScrollOffsetRatio.y = newRatio
         webScrollRatio = newRatio

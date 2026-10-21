@@ -460,10 +460,6 @@ struct VerticalTouchScrollTrackView: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Text("Touch")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Theme.textSoft)
-
             // Botón subir lento (nudge)
             Button {
                 appState.scrollDocumentTouch(deltaY: 15)
