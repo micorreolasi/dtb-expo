@@ -107,6 +107,9 @@ enum WebControlCommand: Equatable {
     case syncTime(seconds: Double)
     case dismissPopups
     case mirrorClick(xRatio: Double, yRatio: Double, selector: String)
+    case syncInput(selector: String, value: String)
+    case submitInput(selector: String)
+    case navigate(url: String)
 }
 
 // MARK: - Canciones

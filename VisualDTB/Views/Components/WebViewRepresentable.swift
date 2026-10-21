@@ -34,6 +34,9 @@ struct WebViewRepresentable: UIViewRepresentable {
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "fullscreenHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "videoPlaybackSync")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "clickMirrorHandler")
+            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "urlChangeHandler")
+            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "inputSyncHandler")
+
             let js = """
             (function() {
                 try {
@@ -73,12 +76,104 @@ struct WebViewRepresentable: UIViewRepresentable {
                     }, true);
                 }
 
-                // Reflejar toques, clics, reproducciones y cierre de popups desde el iPad hacia la TV
+                // Sincronización continua de URLs para SPAs (YouTube, Vimeo, etc.)
+                function setupUrlChangeSync() {
+                    var lastReportedUrl = location.href;
+                    function reportUrl(u) {
+                        if (!u || u === lastReportedUrl) return;
+                        if (u.indexOf('http') !== 0) return;
+                        lastReportedUrl = u;
+                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.urlChangeHandler) {
+                            window.webkit.messageHandlers.urlChangeHandler.postMessage(u);
+                        }
+                    }
+
+                    try {
+                        var _pushState = history.pushState;
+                        history.pushState = function() {
+                            var ret = _pushState.apply(this, arguments);
+                            reportUrl(location.href);
+                            return ret;
+                        };
+                        var _replaceState = history.replaceState;
+                        history.replaceState = function() {
+                            var ret = _replaceState.apply(this, arguments);
+                            reportUrl(location.href);
+                            return ret;
+                        };
+                    } catch(e) {}
+
+                    window.addEventListener('popstate', function() { reportUrl(location.href); }, true);
+                    window.addEventListener('hashchange', function() { reportUrl(location.href); }, true);
+                    window.addEventListener('yt-navigate-finish', function() { reportUrl(location.href); }, true);
+                    window.addEventListener('yt-page-data-updated', function() { reportUrl(location.href); }, true);
+
+                    setInterval(function() {
+                        reportUrl(location.href);
+                    }, 250);
+                }
+
+                // Sincronización de escritura de texto en tiempo real iPad -> TV
+                function setupInputSync() {
+                    function getSelector(el) {
+                        if (!el) return '';
+                        if (el.id) return '#' + CSS.escape(el.id);
+                        if (el.getAttribute('name')) return el.tagName.toLowerCase() + '[name="' + CSS.escape(el.getAttribute('name')) + '"]';
+                        if (el.getAttribute('placeholder')) return el.tagName.toLowerCase() + '[placeholder="' + CSS.escape(el.getAttribute('placeholder')) + '"]';
+                        if (el.getAttribute('aria-label')) return '[aria-label="' + CSS.escape(el.getAttribute('aria-label')) + '"]';
+                        if (el.className && typeof el.className === 'string') {
+                            var cls = el.className.trim().split(/\\s+/).filter(function(c) { return c && !c.includes(':'); }).slice(0, 2).join('.');
+                            if (cls) return el.tagName.toLowerCase() + '.' + cls;
+                        }
+                        return el.tagName.toLowerCase();
+                    }
+
+                    function onInputEvent(e) {
+                        var el = e.target;
+                        if (!el) return;
+                        var tag = el.tagName ? el.tagName.toUpperCase() : '';
+                        if (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable) {
+                            var val = (tag === 'INPUT' || tag === 'TEXTAREA') ? el.value : (el.innerText || '');
+                            var sel = getSelector(el);
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.inputSyncHandler) {
+                                window.webkit.messageHandlers.inputSyncHandler.postMessage({
+                                    selector: sel,
+                                    value: val,
+                                    isEnter: false
+                                });
+                            }
+                        }
+                    }
+
+                    document.addEventListener('input', onInputEvent, true);
+                    document.addEventListener('keyup', onInputEvent, true);
+                    document.addEventListener('change', onInputEvent, true);
+                    document.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') {
+                            var el = e.target;
+                            if (!el) return;
+                            var tag = el.tagName ? el.tagName.toUpperCase() : '';
+                            if (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable) {
+                                var val = (tag === 'INPUT' || tag === 'TEXTAREA') ? el.value : (el.innerText || '');
+                                var sel = getSelector(el);
+                                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.inputSyncHandler) {
+                                    window.webkit.messageHandlers.inputSyncHandler.postMessage({
+                                        selector: sel,
+                                        value: val,
+                                        isEnter: true
+                                    });
+                                }
+                            }
+                        }
+                    }, true);
+                }
+
+                // Reflejar toques, clics, enlaces y reproducciones desde el iPad hacia la TV
                 function setupClickMirror() {
                     var lastMirrorTime = 0;
                     function handleMirror(e) {
                         var now = Date.now();
-                        if (now - lastMirrorTime < 120) return;
+                        if (now - lastMirrorTime < 100) return;
                         lastMirrorTime = now;
                         var target = e.target;
                         if (!target) return;
@@ -95,6 +190,14 @@ struct WebViewRepresentable: UIViewRepresentable {
                             if (cls) sel = target.tagName.toLowerCase() + '.' + cls;
                         }
                         if (!sel) sel = target.tagName.toLowerCase();
+
+                        // Reflejar inmediatamente la navegación de cualquier link o video card
+                        var link = target.closest ? target.closest('a') : null;
+                        if (link && link.href && link.href.indexOf('http') === 0) {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.urlChangeHandler) {
+                                window.webkit.messageHandlers.urlChangeHandler.postMessage(link.href);
+                            }
+                        }
 
                         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.clickMirrorHandler) {
                             window.webkit.messageHandlers.clickMirrorHandler.postMessage({
@@ -116,7 +219,7 @@ struct WebViewRepresentable: UIViewRepresentable {
 
                     function dispatchSync(action, time) {
                         var now = Date.now();
-                        if (lastAction === action && (now - lastActionTime) < 2000) return;
+                        if (lastAction === action && (now - lastActionTime) < 1500) return;
                         lastAction = action;
                         lastActionTime = now;
                         try {
@@ -169,11 +272,15 @@ struct WebViewRepresentable: UIViewRepresentable {
                         setupFsClick();
                         setupClickMirror();
                         setupVideoSync();
+                        setupUrlChangeSync();
+                        setupInputSync();
                     });
                 } else {
                     setupFsClick();
                     setupClickMirror();
                     setupVideoSync();
+                    setupUrlChangeSync();
+                    setupInputSync();
                 }
             })();
             """
@@ -270,18 +377,94 @@ struct WebViewRepresentable: UIViewRepresentable {
         // 4. Ejecución de Controles de Video Web (desde la botonera DTB)
         if context.coordinator.lastWebActionId != appState.webControlTriggerId, let cmd = appState.webControlCommand {
             context.coordinator.lastWebActionId = appState.webControlTriggerId
-            executeWebCommand(cmd, in: uiView)
+            executeWebCommand(cmd, in: uiView, coordinator: context.coordinator)
         }
 
         // 5. Ejecución de sincronización de video iPad -> TV (exclusivo para modo .external, nunca en iPad)
         if mode == .external, context.coordinator.lastExternalActionId != appState.externalWebControlTriggerId, let cmd = appState.externalWebControlCommand {
             context.coordinator.lastExternalActionId = appState.externalWebControlTriggerId
-            executeWebCommand(cmd, in: uiView)
+            executeWebCommand(cmd, in: uiView, coordinator: context.coordinator)
         }
     }
 
-    private func executeWebCommand(_ command: WebControlCommand, in webView: WKWebView) {
+    private func executeWebCommand(_ command: WebControlCommand, in webView: WKWebView, coordinator: Coordinator) {
         switch command {
+        case .navigate(let url):
+            let clean = url.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clean.isEmpty, let targetURL = URL(string: clean) else { return }
+            if webView.url?.absoluteString != clean {
+                coordinator.lastLoadedURL = clean
+                webView.load(URLRequest(url: targetURL))
+            }
+
+        case .syncInput(let selector, let value):
+            let escapedValue = value
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "\\'")
+                .replacingOccurrences(of: "\n", with: "\\n")
+                .replacingOccurrences(of: "\r", with: "")
+            let escapedSelector = selector
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "\\'")
+            let js = """
+            (function() {
+                var el = null;
+                try {
+                    if ('\(escapedSelector)' !== '') {
+                        el = document.querySelector('\(escapedSelector)');
+                    }
+                } catch(e) {}
+                if (!el) {
+                    el = document.querySelector('input[name="search_query"], input#search, input[type="search"], input[type="text"], textarea');
+                }
+                if (el) {
+                    if ('value' in el) {
+                        el.value = '\(escapedValue)';
+                    } else {
+                        el.innerText = '\(escapedValue)';
+                    }
+                    try {
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    } catch(e) {}
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
+        case .submitInput(let selector):
+            let escapedSelector = selector
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "\\'")
+            let js = """
+            (function() {
+                var el = null;
+                try {
+                    if ('\(escapedSelector)' !== '') el = document.querySelector('\(escapedSelector)');
+                } catch(e) {}
+                if (!el) {
+                    el = document.querySelector('input[name="search_query"], input#search, input[type="search"], input[type="text"]');
+                }
+                if (el) {
+                    var enterEvent = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true });
+                    el.dispatchEvent(enterEvent);
+                    var form = el.closest('form');
+                    if (form) {
+                        if (typeof form.requestSubmit === 'function') {
+                            form.requestSubmit();
+                        } else {
+                            form.submit();
+                        }
+                    }
+                }
+                var searchBtn = document.querySelector('button#search-icon-legacy, button[aria-label*="Search" i], button[aria-label*="Buscar" i], .search-btn');
+                if (searchBtn) {
+                    try { searchBtn.click(); } catch(e) {}
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
         case .play:
             let js = """
             (function() {
@@ -483,6 +666,9 @@ struct WebViewRepresentable: UIViewRepresentable {
             webView.evaluateJavaScript(js, completionHandler: nil)
 
         case .mirrorClick(let xRatio, let yRatio, let selector):
+            let escapedSelector = selector
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "\\'")
             let js = """
             (function() {
                 // 1. Eliminar popup de Google si estuviera visible
@@ -493,13 +679,17 @@ struct WebViewRepresentable: UIViewRepresentable {
                 }
 
                 // 2. Click por selector directo si existe
-                if ('\(selector)' && '\(selector)' !== '') {
+                if ('\(escapedSelector)' && '\(escapedSelector)' !== '') {
                     try {
-                        var elSel = document.querySelector('\(selector)');
+                        var elSel = document.querySelector('\(escapedSelector)');
                         if (elSel) {
                             elSel.click();
                             var pBtn = elSel.closest('button, a, [role="button"], video, .play, .vp-play-button');
                             if (pBtn && pBtn !== elSel) pBtn.click();
+                            var link = elSel.closest('a');
+                            if (link && link.href && link.href.indexOf('http') === 0) {
+                                window.location.href = link.href;
+                            }
                             return;
                         }
                     } catch(e) {}
@@ -514,6 +704,10 @@ struct WebViewRepresentable: UIViewRepresentable {
                         el.click();
                         var btn = el.closest('button, a, [role="button"], video, .play, .vp-play-button');
                         if (btn && btn !== el) btn.click();
+                        var aTag = el.closest('a');
+                        if (aTag && aTag.href && aTag.href.indexOf('http') === 0) {
+                            window.location.href = aTag.href;
+                        }
                     } catch(e) {}
                 }
 
@@ -585,6 +779,27 @@ struct WebViewRepresentable: UIViewRepresentable {
                 DispatchQueue.main.async {
                     self.parent.appState.sendWebCommand(.toggleFullscreen)
                 }
+            } else if message.name == "urlChangeHandler", let newUrl = message.body as? String, !newUrl.isEmpty {
+                DispatchQueue.main.async {
+                    if self.parent.appState.webUrl != newUrl {
+                        self.parent.appState.webUrl = newUrl
+                    }
+                    if self.parent.appState.projection.content != newUrl {
+                        self.parent.appState.projection = ProjectionData(type: .web, content: newUrl)
+                    }
+                    self.parent.onNavigation?(newUrl)
+                    self.parent.appState.sendExternalWebCommand(.navigate(url: newUrl))
+                }
+            } else if message.name == "inputSyncHandler", let dict = message.body as? [String: Any] {
+                let sel = dict["selector"] as? String ?? ""
+                let val = dict["value"] as? String ?? ""
+                let isEnter = dict["isEnter"] as? Bool ?? false
+                DispatchQueue.main.async {
+                    self.parent.appState.sendExternalWebCommand(.syncInput(selector: sel, value: val))
+                    if isEnter {
+                        self.parent.appState.sendExternalWebCommand(.submitInput(selector: sel))
+                    }
+                }
             } else if message.name == "clickMirrorHandler", let dict = message.body as? [String: Any] {
                 let xRatio = dict["xRatio"] as? Double ?? 0.5
                 let yRatio = dict["yRatio"] as? Double ?? 0.5
@@ -593,10 +808,6 @@ struct WebViewRepresentable: UIViewRepresentable {
                     self.parent.appState.sendExternalWebCommand(.mirrorClick(xRatio: xRatio, yRatio: yRatio, selector: sel))
                 }
             } else if message.name == "videoPlaybackSync", let dict = message.body as? [String: Any], let action = dict["action"] as? String {
-                let now = Date()
-                guard now.timeIntervalSince(self.lastSyncReceivedTime) >= 1.5 else { return }
-                self.lastSyncReceivedTime = now
-
                 let time = dict["time"] as? Double ?? 0.0
                 DispatchQueue.main.async {
                     if action == "play" {
@@ -627,6 +838,35 @@ struct WebViewRepresentable: UIViewRepresentable {
             guard parent.mode != .external else { return }
             DispatchQueue.main.async {
                 self.parent.appState.documentZoomScale = scale
+            }
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if parent.mode != .external, let url = navigationAction.request.url?.absoluteString, url.starts(with: "http") {
+                DispatchQueue.main.async {
+                    if self.parent.appState.webUrl != url {
+                        self.parent.appState.webUrl = url
+                    }
+                    if self.parent.appState.projection.content != url {
+                        self.parent.appState.projection = ProjectionData(type: .web, content: url)
+                    }
+                    self.parent.appState.sendExternalWebCommand(.navigate(url: url))
+                }
+            }
+            decisionHandler(.allow)
+        }
+
+        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+            if parent.mode != .external, let url = webView.url?.absoluteString, url.starts(with: "http") {
+                DispatchQueue.main.async {
+                    if self.parent.appState.webUrl != url {
+                        self.parent.appState.webUrl = url
+                    }
+                    if self.parent.appState.projection.content != url {
+                        self.parent.appState.projection = ProjectionData(type: .web, content: url)
+                    }
+                    self.parent.appState.sendExternalWebCommand(.navigate(url: url))
+                }
             }
         }
 
@@ -663,12 +903,29 @@ struct WebViewRepresentable: UIViewRepresentable {
                     cleanPopups();
                     setInterval(cleanPopups, 1500);
 
-                    var vids = document.querySelectorAll('video');
-                    for (var i = 0; i < vids.length; i++) {
-                        vids[i].setAttribute('playsinline', '');
-                        vids[i].setAttribute('webkit-playsinline', '');
-                        vids[i].style.setProperty('object-fit', 'contain', 'important');
-                    }
+                    // Sincronización automática de videos y reproducción en TV
+                    var autoplayCount = 0;
+                    var autoplayTimer = setInterval(function() {
+                        var vids = document.querySelectorAll('video');
+                        if (vids.length > 0) {
+                            for (var i = 0; i < vids.length; i++) {
+                                vids[i].setAttribute('playsinline', '');
+                                vids[i].setAttribute('webkit-playsinline', '');
+                                vids[i].style.setProperty('object-fit', 'contain', 'important');
+                                if (vids[i].paused && autoplayCount < 12) {
+                                    autoplayCount++;
+                                    var p = vids[i].play();
+                                    if (p && p.catch) {
+                                        p.catch(function() {
+                                            vids[i].muted = true;
+                                            vids[i].play();
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        if (autoplayCount >= 12) clearInterval(autoplayTimer);
+                    }, 500);
                 })();
                 """
                 webView.evaluateJavaScript(tvSetup, completionHandler: nil)
