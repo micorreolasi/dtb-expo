@@ -44,6 +44,7 @@ struct WebViewRepresentable: UIViewRepresentable {
 
         let contentController = WKUserContentController()
         if mode != .external {
+            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "fullscreenHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "videoPlaybackSync")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "clickMirrorHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "urlChangeHandler")
@@ -181,48 +182,54 @@ struct WebViewRepresentable: UIViewRepresentable {
                     }, true);
                 }
 
-                // Reflejar toques, clics, enlaces y reproducciones desde el iPad hacia la TV
+                // Reflejar clics, navegación e interactividad desde el iPad hacia la TV
                 function setupClickMirror() {
-                    var lastMirrorTime = 0;
-                    function handleMirror(e) {
-                        var now = Date.now();
-                        if (now - lastMirrorTime < 100) return;
-                        lastMirrorTime = now;
+                    function isFullscreenTarget(target) {
+                        if (!target || !target.closest) return null;
+                        return target.closest(
+                            '.ytp-fullscreen-button, ' +
+                            '.vp-fullscreen-button, ' +
+                            '.fullscreen-icon, ' +
+                            '.ytm-fullscreen-button, ' +
+                            'button[data-fullscreen], ' +
+                            'button[aria-label*="pantalla completa" i], ' +
+                            'button[aria-label*="fullscreen" i], ' +
+                            '[data-title-no-tooltip*="pantalla completa" i], ' +
+                            '[data-title-no-tooltip*="fullscreen" i], ' +
+                            '.vjs-fullscreen-control, ' +
+                            'button.fullscreen, ' +
+                            '.fullscreen, ' +
+                            '[data-button-action="fullscreen"]'
+                        );
+                    }
+
+                    function handleGlobalClick(e) {
                         var target = e.target;
                         if (!target) return;
-                        var touch = e.changedTouches ? e.changedTouches[0] : e;
-                        var clientX = touch.clientX || (window.innerWidth * 0.5);
-                        var clientY = touch.clientY || (window.innerHeight * 0.5);
-                        var xR = clientX / window.innerWidth;
-                        var yR = clientY / window.innerHeight;
-                        var sel = '';
-                        if (target.id) {
-                            sel = '#' + target.id;
-                        } else if (target.className && typeof target.className === 'string') {
-                            var cls = target.className.trim().split(/\\s+/).filter(function(c) { return c && !c.includes(':'); }).slice(0, 2).join('.');
-                            if (cls) sel = target.tagName.toLowerCase() + '.' + cls;
-                        }
-                        if (!sel) sel = target.tagName.toLowerCase();
 
-                        // Reflejar inmediatamente la navegación de cualquier link o video card
+                        // 1. Interceptar botón de pantalla completa del reproductor para reflejarlo en iPad y TV
+                        var fsBtn = isFullscreenTarget(target);
+                        if (fsBtn) {
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                            e.stopPropagation();
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler) {
+                                window.webkit.messageHandlers.fullscreenHandler.postMessage('toggle');
+                            }
+                            return;
+                        }
+
+                        // 2. Reflejar inmediatamente la navegación de cualquier video card o enlace
                         var link = target.closest ? target.closest('a') : null;
                         if (link && link.href && link.href.indexOf('http') === 0 && link.href.indexOf('proxy.html') === -1) {
                             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.urlChangeHandler) {
                                 window.webkit.messageHandlers.urlChangeHandler.postMessage(link.href);
                             }
                         }
-
-                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.clickMirrorHandler) {
-                            window.webkit.messageHandlers.clickMirrorHandler.postMessage({
-                                xRatio: xR,
-                                yRatio: yR,
-                                selector: sel
-                            });
-                        }
                     }
 
-                    document.addEventListener('touchend', handleMirror, true);
-                    document.addEventListener('click', handleMirror, true);
+                    window.addEventListener('click', handleGlobalClick, true);
+                    window.addEventListener('touchend', handleGlobalClick, true);
                 }
 
                 // Sincronización segura de eventos de video iPad -> TV (anti-bucle y anti-bloqueo)
@@ -263,7 +270,7 @@ struct WebViewRepresentable: UIViewRepresentable {
                         }
                     }, true);
 
-                    // Escuchar eventos de iframe de forma pasiva y sin re-suscripciones circulares
+                    // Escuchar eventos de iframe de forma pasiva
                     window.addEventListener('message', function(ev) {
                         try {
                             var d = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
@@ -288,54 +295,32 @@ struct WebViewRepresentable: UIViewRepresentable {
                     if (!document.webkitFullscreenEnabled) {
                         Object.defineProperty(document, 'webkitFullscreenEnabled', { get: function() { return true; }, configurable: true });
                     }
-                    if (!Element.prototype.requestFullscreen) {
-                        Element.prototype.requestFullscreen = function() {
-                            var v = this.querySelector('video') || this;
-                            if (v && v.webkitEnterFullscreen) {
-                                try { v.webkitEnterFullscreen(); } catch(e) {}
-                            }
-                            return Promise.resolve();
-                        };
-                    }
-                    if (!Element.prototype.webkitRequestFullscreen) {
-                        Element.prototype.webkitRequestFullscreen = Element.prototype.requestFullscreen;
-                    }
+                    var dummyFullscreen = function() {
+                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler) {
+                            window.webkit.messageHandlers.fullscreenHandler.postMessage('toggle');
+                        }
+                        return Promise.resolve();
+                    };
+                    Element.prototype.requestFullscreen = dummyFullscreen;
+                    Element.prototype.webkitRequestFullscreen = dummyFullscreen;
+                    Element.prototype.webkitEnterFullscreen = dummyFullscreen;
+                    Document.prototype.requestFullscreen = dummyFullscreen;
+                    Document.prototype.webkitRequestFullscreen = dummyFullscreen;
                 } catch(e) {}
 
-                // Omitir anuncios de YouTube automáticamente e inmediatamente
-                function autoSkipYouTubeAds() {
-                    try {
-                        var ad = document.querySelector('.ad-showing, .ad-interrupting');
-                        var vids = document.querySelectorAll('video');
-                        if (ad && vids.length > 0) {
-                            for (var i = 0; i < vids.length; i++) {
-                                if (vids[i] && !isNaN(vids[i].duration) && vids[i].duration > 0) {
-                                    vids[i].currentTime = vids[i].duration;
-                                }
-                            }
-                        }
-                        var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .videoAdUiSkipButton');
-                        if (skipBtn) {
-                            skipBtn.click();
-                        }
-                    } catch(e) {}
-                }
-
-                // Ocultar anuncios visuales y banners de YouTube
+                // Ocultar avisos molestos de incompatibilidad de YouTube y popups de Google (SIN OCULTAR ANUNCIOS)
                 function injectCleanStyles() {
                     if (document.getElementById('dtb-global-clean-style')) return;
                     var style = document.createElement('style');
                     style.id = 'dtb-global-clean-style';
                     style.textContent = `
-                        .video-ads,
-                        .ytp-ad-module,
-                        .ytp-ad-overlay-container,
-                        .ytp-ad-player-overlay,
-                        .ytp-ad-image-overlay,
-                        .ytp-ad-text-overlay,
                         .ytp-fullscreen-quick-action,
                         .ytp-bezel[role="status"],
                         .ytp-bezel-text,
+                        div[role="alert"],
+                        ytm-message-renderer,
+                        .toast,
+                        ytm-notification-action-renderer,
                         div[class*="upsell-dialog"],
                         yt-upsell-dialog-renderer,
                         #credential_picker_container,
@@ -347,8 +332,6 @@ struct WebViewRepresentable: UIViewRepresentable {
                     `;
                     if (document.head) document.head.appendChild(style);
                 }
-
-                setInterval(autoSkipYouTubeAds, 250);
 
                 if (document.readyState === 'loading') {
                     document.addEventListener('DOMContentLoaded', function() {
@@ -496,13 +479,19 @@ struct WebViewRepresentable: UIViewRepresentable {
             }
         }
 
-        // 4. Ejecución de Controles de Video Web (desde la botonera DTB)
+        // 4. Muteo inteligente del iPad si la TV está conectada (el audio sale por la TV sin eco)
+        let shouldMuteIPad = (mode != .external) && (appState.hasExternalDisplay && appState.externalDisplayEnabled)
+        if shouldMuteIPad {
+            uiView.evaluateJavaScript("var vids = document.querySelectorAll('video'); for (var i = 0; i < vids.length; i++) { vids[i].muted = true; }", completionHandler: nil)
+        }
+
+        // 5. Ejecución de Controles de Video Web (desde la botonera DTB)
         if context.coordinator.lastWebActionId != appState.webControlTriggerId, let cmd = appState.webControlCommand {
             context.coordinator.lastWebActionId = appState.webControlTriggerId
             executeWebCommand(cmd, in: uiView, coordinator: context.coordinator)
         }
 
-        // 5. Ejecución de sincronización de video iPad -> TV (exclusivo para modo .external, nunca en iPad)
+        // 6. Ejecución de sincronización de video iPad -> TV (exclusivo para modo .external, nunca en iPad)
         if mode == .external, context.coordinator.lastExternalActionId != appState.externalWebControlTriggerId, let cmd = appState.externalWebControlCommand {
             context.coordinator.lastExternalActionId = appState.externalWebControlTriggerId
             executeWebCommand(cmd, in: uiView, coordinator: context.coordinator)
@@ -743,28 +732,79 @@ struct WebViewRepresentable: UIViewRepresentable {
         case .toggleFullscreen:
             let js = """
             (function() {
-                // 1. Intentar botón de pantalla completa propio del reproductor (Vimeo / YouTube)
-                var vimeoFsBtn = document.querySelector('.vp-fullscreen-button');
-                if (vimeoFsBtn) {
-                    try { vimeoFsBtn.click(); return; } catch(e) {}
-                }
-                var ytFsBtn = document.querySelector('.ytp-fullscreen-button');
-                if (ytFsBtn) {
-                    try { ytFsBtn.click(); return; } catch(e) {}
-                }
-                // 2. Intentar API nativa webkitEnterFullscreen en <video>
-                var vids = document.querySelectorAll('video');
-                for (var i = 0; i < vids.length; i++) {
-                    if (vids[i].webkitEnterFullscreen) {
-                        try { vids[i].webkitEnterFullscreen(); return; } catch(e) {}
+                var existing = document.getElementById('dtb-fullscreen-style');
+                if (existing) {
+                    existing.remove();
+                    var activeElements = document.querySelectorAll('.dtb-fullscreen-active');
+                    for (var i = 0; i < activeElements.length; i++) {
+                        activeElements[i].classList.remove('dtb-fullscreen-active');
                     }
-                }
-                // 3. PostMessage a iframes embebidos
-                var iframes = document.querySelectorAll('iframe');
-                for (var j = 0; j < iframes.length; j++) {
-                    try {
-                        iframes[j].contentWindow.postMessage('{"method":"requestFullscreen"}', '*');
-                    } catch(e) {}
+                } else {
+                    var style = document.createElement('style');
+                    style.id = 'dtb-fullscreen-style';
+                    style.textContent = `
+                        video,
+                        .html5-video-player,
+                        #player,
+                        .video-stream,
+                        .player-container,
+                        #movie_player,
+                        .vp-video-wrapper,
+                        .vp-video,
+                        .player,
+                        div[data-player],
+                        div[data-vimeo-initialized],
+                        iframe[src*="vimeo.com"],
+                        iframe[src*="player.vimeo.com"],
+                        iframe[src*="youtube.com"],
+                        ytm-media-item,
+                        ytm-custom-control,
+                        .player-api,
+                        #player-control-overlay,
+                        .dtb-fullscreen-active {
+                            position: fixed !important;
+                            top: 0 !important;
+                            left: 0 !important;
+                            width: 100vw !important;
+                            height: 100vh !important;
+                            max-width: 100vw !important;
+                            max-height: 100vh !important;
+                            padding: 0 !important;
+                            margin: 0 !important;
+                            z-index: 2147483640 !important;
+                            background: black !important;
+                            object-fit: contain !important;
+                            box-sizing: border-box !important;
+                        }
+                        .vp-controls-wrapper,
+                        .vp-controls,
+                        .ytp-chrome-bottom,
+                        .ytp-chrome-top,
+                        .vjs-control-bar {
+                            z-index: 2147483647 !important;
+                        }
+                        body, html {
+                            overflow: hidden !important;
+                        }
+                    `;
+                    document.head.appendChild(style);
+
+                    var vids = document.querySelectorAll('video');
+                    for (var i = 0; i < vids.length; i++) {
+                        var v = vids[i];
+                        v.classList.add('dtb-fullscreen-active');
+                        v.style.setProperty('object-fit', 'contain', 'important');
+                        var parent = v.closest('.vp-video-wrapper, .player, div[data-player], .html5-video-player, .player-container, #movie_player');
+                        if (parent) {
+                            parent.classList.add('dtb-fullscreen-active');
+                            parent.style.setProperty('padding', '0', 'important');
+                            parent.style.setProperty('height', '100vh', 'important');
+                        }
+                    }
+                    var iframes = document.querySelectorAll('iframe[src*="vimeo"], iframe[src*="youtube"], iframe[src*="player"]');
+                    for (var j = 0; j < iframes.length; j++) {
+                        iframes[j].classList.add('dtb-fullscreen-active');
+                    }
                 }
             })();
             """
@@ -1073,12 +1113,6 @@ struct WebViewRepresentable: UIViewRepresentable {
                         .cookie-banner,
                         div[class*="cookie-notice"],
                         div[class*="consent-banner"],
-                        .video-ads,
-                        .ytp-ad-module,
-                        .ytp-ad-overlay-container,
-                        .ytp-ad-player-overlay,
-                        .ytp-ad-image-overlay,
-                        .ytp-ad-text-overlay,
                         .ytp-fullscreen-quick-action,
                         .ytp-bezel[role="status"],
                         .ytp-bezel-text,
@@ -1097,26 +1131,6 @@ struct WebViewRepresentable: UIViewRepresentable {
                     }
                     cleanPopups();
                     setInterval(cleanPopups, 1500);
-
-                    // Omitir anuncios de YouTube en la TV inmediatamente
-                    function autoSkipAdsTV() {
-                        try {
-                            var ad = document.querySelector('.ad-showing, .ad-interrupting');
-                            var vids = document.querySelectorAll('video');
-                            if (ad && vids.length > 0) {
-                                for (var i = 0; i < vids.length; i++) {
-                                    if (vids[i] && !isNaN(vids[i].duration) && vids[i].duration > 0) {
-                                        vids[i].currentTime = vids[i].duration;
-                                    }
-                                }
-                            }
-                            var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .videoAdUiSkipButton');
-                            if (skipBtn) {
-                                skipBtn.click();
-                            }
-                        } catch(e) {}
-                    }
-                    setInterval(autoSkipAdsTV, 200);
 
                     // Sincronización automática de videos y reproducción en TV
                     var autoplayCount = 0;
