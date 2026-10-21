@@ -193,7 +193,7 @@ struct WebViewModule: View {
                             mode: .presentation,
                             scrollRatio: appState.webScrollRatio
                         ) { newURL in
-                            if newURL.starts(with: "http") {
+                            if WebViewRepresentable.isValidTopLevelWebUrl(newURL) {
                                 appState.webUrl = newURL
                                 if appState.projection.content != newURL {
                                     appState.projection = ProjectionData(type: .web, content: newURL)

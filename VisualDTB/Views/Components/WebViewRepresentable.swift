@@ -16,6 +16,19 @@ struct WebViewRepresentable: UIViewRepresentable {
     var navAction: DocumentNavAction? = nil
     var navTriggerId: UUID? = nil
 
+    static func isValidTopLevelWebUrl(_ urlString: String) -> Bool {
+        guard urlString.hasPrefix("http://") || urlString.hasPrefix("https://") else { return false }
+        let lower = urlString.lowercased()
+        if lower.contains("proxy.html") ||
+           lower.contains("/static/proxy") ||
+           lower.contains("about:blank") ||
+           lower.contains("accounts.google.com/gsi") ||
+           lower.contains("doubleclick.net") {
+            return false
+        }
+        return true
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
@@ -63,10 +76,16 @@ struct WebViewRepresentable: UIViewRepresentable {
 
                 // Sincronización continua de URLs para SPAs (YouTube, Vimeo, etc.)
                 function setupUrlChangeSync() {
+                    // CRÍTICO: SOLO el frame principal (window.top) debe reportar cambios de URL
+                    // Las páginas como Vimeo cargan iframes auxiliares (ej: player.vimeo.com/static/proxy.html)
+                    // que NUNCA deben reportarse como URL principal.
+                    if (window !== window.top) return;
+
                     var lastReportedUrl = location.href;
                     function reportUrl(u) {
                         if (!u || u === lastReportedUrl) return;
                         if (u.indexOf('http') !== 0) return;
+                        if (u.indexOf('proxy.html') !== -1 || u.indexOf('about:blank') !== -1) return;
                         lastReportedUrl = u;
                         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.urlChangeHandler) {
                             window.webkit.messageHandlers.urlChangeHandler.postMessage(u);
@@ -178,7 +197,7 @@ struct WebViewRepresentable: UIViewRepresentable {
 
                         // Reflejar inmediatamente la navegación de cualquier link o video card
                         var link = target.closest ? target.closest('a') : null;
-                        if (link && link.href && link.href.indexOf('http') === 0) {
+                        if (link && link.href && link.href.indexOf('http') === 0 && link.href.indexOf('proxy.html') === -1) {
                             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.urlChangeHandler) {
                                 window.webkit.messageHandlers.urlChangeHandler.postMessage(link.href);
                             }
@@ -278,6 +297,7 @@ struct WebViewRepresentable: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.bounces = true
         webView.scrollView.delegate = context.coordinator
@@ -386,7 +406,7 @@ struct WebViewRepresentable: UIViewRepresentable {
         switch command {
         case .navigate(let url):
             let clean = url.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !clean.isEmpty, let targetURL = URL(string: clean) else { return }
+            guard !clean.isEmpty, WebViewRepresentable.isValidTopLevelWebUrl(clean), let targetURL = URL(string: clean) else { return }
             if webView.url?.absoluteString != clean {
                 coordinator.lastLoadedURL = clean
                 webView.load(URLRequest(url: targetURL))
@@ -682,7 +702,7 @@ struct WebViewRepresentable: UIViewRepresentable {
                             var pBtn = elSel.closest('button, a, [role="button"], video, .play, .vp-play-button');
                             if (pBtn && pBtn !== elSel) pBtn.click();
                             var link = elSel.closest('a');
-                            if (link && link.href && link.href.indexOf('http') === 0) {
+                            if (link && link.href && link.href.indexOf('http') === 0 && link.href.indexOf('proxy.html') === -1) {
                                 window.location.href = link.href;
                             }
                             return;
@@ -700,7 +720,7 @@ struct WebViewRepresentable: UIViewRepresentable {
                         var btn = el.closest('button, a, [role="button"], video, .play, .vp-play-button');
                         if (btn && btn !== el) btn.click();
                         var aTag = el.closest('a');
-                        if (aTag && aTag.href && aTag.href.indexOf('http') === 0) {
+                        if (aTag && aTag.href && aTag.href.indexOf('http') === 0 && aTag.href.indexOf('proxy.html') === -1) {
                             window.location.href = aTag.href;
                         }
                     } catch(e) {}
@@ -742,7 +762,8 @@ struct WebViewRepresentable: UIViewRepresentable {
         let clean = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
 
-        if clean.hasPrefix("http://") || clean.hasPrefix("https://"), let url = URL(string: clean) {
+        if clean.hasPrefix("http://") || clean.hasPrefix("https://") {
+            guard WebViewRepresentable.isValidTopLevelWebUrl(clean), let url = URL(string: clean) else { return }
             webView.load(URLRequest(url: url))
         } else {
             let cleanPath: String = {
@@ -757,7 +778,7 @@ struct WebViewRepresentable: UIViewRepresentable {
         }
     }
 
-    class Coordinator: NSObject, WKNavigationDelegate, UIScrollViewDelegate, WKScriptMessageHandler {
+    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, UIScrollViewDelegate, WKScriptMessageHandler {
         var parent: WebViewRepresentable
         var lastTriggerId: UUID? = nil
         var lastLoadedURL: String? = nil
@@ -775,6 +796,7 @@ struct WebViewRepresentable: UIViewRepresentable {
                     self.parent.appState.sendWebCommand(.toggleFullscreen)
                 }
             } else if message.name == "urlChangeHandler", let newUrl = message.body as? String, !newUrl.isEmpty {
+                guard WebViewRepresentable.isValidTopLevelWebUrl(newUrl) else { return }
                 DispatchQueue.main.async {
                     if self.parent.appState.webUrl != newUrl {
                         self.parent.appState.webUrl = newUrl
@@ -843,7 +865,27 @@ struct WebViewRepresentable: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            if parent.mode != .external, let url = navigationAction.request.url?.absoluteString, url.starts(with: "http") {
+            // Manejar links que abren en nueva pestaña (target="_blank")
+            if navigationAction.targetFrame == nil {
+                if let url = navigationAction.request.url?.absoluteString,
+                   WebViewRepresentable.isValidTopLevelWebUrl(url),
+                   let u = navigationAction.request.url {
+                    webView.load(URLRequest(url: u))
+                }
+                decisionHandler(.cancel)
+                return
+            }
+
+            // CRÍTICO: Solo frames principales deben cambiar la URL global de la app y del TV.
+            // Los subframes / iframes (como proxy.html de Vimeo, auth frames o anuncios) NUNCA deben sobrescribir la URL.
+            guard navigationAction.targetFrame?.isMainFrame == true else {
+                decisionHandler(.allow)
+                return
+            }
+
+            if parent.mode != .external,
+               let url = navigationAction.request.url?.absoluteString,
+               WebViewRepresentable.isValidTopLevelWebUrl(url) {
                 DispatchQueue.main.async {
                     if self.parent.appState.webUrl != url {
                         self.parent.appState.webUrl = url
@@ -858,7 +900,9 @@ struct WebViewRepresentable: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-            if parent.mode != .external, let url = webView.url?.absoluteString, url.starts(with: "http") {
+            if parent.mode != .external,
+               let url = webView.url?.absoluteString,
+               WebViewRepresentable.isValidTopLevelWebUrl(url) {
                 DispatchQueue.main.async {
                     if self.parent.appState.webUrl != url {
                         self.parent.appState.webUrl = url
@@ -872,7 +916,7 @@ struct WebViewRepresentable: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            if let current = webView.url?.absoluteString {
+            if let current = webView.url?.absoluteString, WebViewRepresentable.isValidTopLevelWebUrl(current) {
                 parent.onNavigation?(current)
             }
 
