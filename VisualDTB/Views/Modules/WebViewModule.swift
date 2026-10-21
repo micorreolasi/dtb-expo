@@ -141,6 +141,23 @@ struct WebViewModule: View {
                     }
                     .buttonStyle(.plain)
 
+                    // Quitar Popups TV (Cerrar Google Sign-in, banners y avisos en la TV)
+                    Button {
+                        appState.sendExternalWebCommand(.dismissPopups)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Quitar Popups TV")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.textSoft)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .chip(fill: Theme.border, radius: 6)
+                    }
+                    .buttonStyle(.plain)
+
                     // Recargar
                     Button {
                         appState.sendWebCommand(.reload)

@@ -24,6 +24,7 @@ struct WebViewRepresentable: UIViewRepresentable {
         if mode != .external {
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "fullscreenHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "videoPlaybackSync")
+            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "clickMirrorHandler")
             let js = """
             (function() {
                 try {
@@ -59,6 +60,32 @@ struct WebViewRepresentable: UIViewRepresentable {
                             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fullscreenHandler) {
                                 window.webkit.messageHandlers.fullscreenHandler.postMessage('toggleFullscreen');
                             }
+                        }
+                    }, true);
+                }
+
+                // Reflejar clics, reproducciones y cierre de popups desde el iPad hacia la TV
+                function setupClickMirror() {
+                    document.addEventListener('click', function(e) {
+                        var target = e.target;
+                        if (!target) return;
+                        var xR = e.clientX / window.innerWidth;
+                        var yR = e.clientY / window.innerHeight;
+                        var sel = '';
+                        if (target.id) {
+                            sel = '#' + target.id;
+                        } else if (target.className && typeof target.className === 'string') {
+                            var cls = target.className.trim().split(/\\s+/).filter(function(c) { return c && !c.includes(':'); }).slice(0, 2).join('.');
+                            if (cls) sel = target.tagName.toLowerCase() + '.' + cls;
+                        }
+                        if (!sel) sel = target.tagName.toLowerCase();
+
+                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.clickMirrorHandler) {
+                            window.webkit.messageHandlers.clickMirrorHandler.postMessage({
+                                xRatio: xR,
+                                yRatio: yR,
+                                selector: sel
+                            });
                         }
                     }, true);
                 }
@@ -121,10 +148,12 @@ struct WebViewRepresentable: UIViewRepresentable {
                 if (document.readyState === 'loading') {
                     document.addEventListener('DOMContentLoaded', function() {
                         setupFsClick();
+                        setupClickMirror();
                         setupVideoSync();
                     });
                 } else {
                     setupFsClick();
+                    setupClickMirror();
                     setupVideoSync();
                 }
             })();
@@ -172,10 +201,11 @@ struct WebViewRepresentable: UIViewRepresentable {
                 }
             }
 
-            // Sincronizar posición vertical
+            // Sincronizar posición vertical (documentos .key / .pptx usan documentScrollOffsetRatio, web usa webScrollRatio)
             let maxOffset = max(0, sv.contentSize.height - sv.bounds.height)
             if maxOffset > 0 {
-                let targetY = maxOffset * appState.webScrollRatio
+                let activeRatio = appState.isDocumentActive ? appState.documentScrollOffsetRatio.y : appState.webScrollRatio
+                let targetY = maxOffset * activeRatio
                 if abs(sv.contentOffset.y - targetY) > 2 {
                     sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
                 }
@@ -186,11 +216,11 @@ struct WebViewRepresentable: UIViewRepresentable {
         if let triggerId = navTriggerId, triggerId != context.coordinator.lastTriggerId {
             context.coordinator.lastTriggerId = triggerId
             let sv = uiView.scrollView
-            let pageHeight = max(200, sv.bounds.height * 0.85)
-            let currentOffset = sv.contentOffset.y
             let maxOffset = max(0, sv.contentSize.height - sv.bounds.height)
 
             if maxOffset > 0 {
+                let pageHeight = max(200, sv.bounds.height * 0.90)
+                let currentOffset = sv.contentOffset.y
                 let targetOffset: CGFloat
                 if navAction == .next {
                     targetOffset = min(maxOffset, currentOffset + pageHeight)
@@ -200,11 +230,10 @@ struct WebViewRepresentable: UIViewRepresentable {
                     targetOffset = currentOffset
                 }
                 sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetOffset), animated: true)
-                if mode != .external {
-                    let ratio = max(0.0, min(1.0, targetOffset / maxOffset))
-                    DispatchQueue.main.async {
-                        self.appState.webScrollRatio = ratio
-                    }
+                let ratio = max(0.0, min(1.0, targetOffset / maxOffset))
+                DispatchQueue.main.async {
+                    self.appState.documentScrollOffsetRatio.y = ratio
+                    self.appState.webScrollRatio = ratio
                 }
             }
         }
@@ -459,6 +488,54 @@ struct WebViewRepresentable: UIViewRepresentable {
             })();
             """
             webView.evaluateJavaScript(js, completionHandler: nil)
+
+        case .dismissPopups:
+            let js = """
+            (function() {
+                var gp = document.getElementById('credential_picker_container') || document.querySelector('iframe[src*="accounts.google.com/gsi"]');
+                if (gp) gp.remove();
+                var cookieBtn = document.querySelector('#onetrust-accept-btn-handler, button[aria-label*="Accept" i], button[aria-label*="Aceptar" i], .cookie-close, [aria-label*="Close" i]');
+                if (cookieBtn) {
+                    try { cookieBtn.click(); } catch(e) {}
+                }
+                var modals = document.querySelectorAll('#credential_picker_container, .onetrust-pc-dark-filter, #onetrust-consent-sdk');
+                for (var i = 0; i < modals.length; i++) {
+                    modals[i].remove();
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
+        case .mirrorClick(let xRatio, let yRatio, let selector):
+            let js = """
+            (function() {
+                var gp = document.getElementById('credential_picker_container') || document.querySelector('iframe[src*="accounts.google.com/gsi"]');
+                if (gp && \(xRatio) > 0.6 && \(yRatio) < 0.3) {
+                    gp.remove();
+                    return;
+                }
+                if ('\(selector)' && '\(selector)' !== '') {
+                    try {
+                        var elSel = document.querySelector('\(selector)');
+                        if (elSel) {
+                            elSel.click();
+                            return;
+                        }
+                    } catch(e) {}
+                }
+                var x = window.innerWidth * \(xRatio);
+                var y = window.innerHeight * \(yRatio);
+                var el = document.elementFromPoint(x, y);
+                if (el) {
+                    try {
+                        el.click();
+                        var btn = el.closest('button, a, [role="button"]');
+                        if (btn) btn.click();
+                    } catch(e) {}
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
         }
     }
 
@@ -497,6 +574,13 @@ struct WebViewRepresentable: UIViewRepresentable {
             if message.name == "fullscreenHandler" {
                 DispatchQueue.main.async {
                     self.parent.appState.sendWebCommand(.toggleFullscreen)
+                }
+            } else if message.name == "clickMirrorHandler", let dict = message.body as? [String: Any] {
+                let xRatio = dict["xRatio"] as? Double ?? 0.5
+                let yRatio = dict["yRatio"] as? Double ?? 0.5
+                let sel = dict["selector"] as? String ?? ""
+                DispatchQueue.main.async {
+                    self.parent.appState.sendExternalWebCommand(.mirrorClick(xRatio: xRatio, yRatio: yRatio, selector: sel))
                 }
             } else if message.name == "videoPlaybackSync", let dict = message.body as? [String: Any], let action = dict["action"] as? String {
                 let now = Date()
@@ -540,6 +624,32 @@ struct WebViewRepresentable: UIViewRepresentable {
             if parent.mode == .external {
                 let tvSetup = """
                 (function() {
+                    var style = document.createElement('style');
+                    style.id = 'dtb-tv-clean-style';
+                    style.textContent = `
+                        #credential_picker_container,
+                        iframe[src*="accounts.google.com/gsi"],
+                        div[id*="google-signin"],
+                        div[class*="google-one-tap"],
+                        .g_id_onload,
+                        #onetrust-consent-sdk,
+                        .cookie-banner,
+                        div[class*="cookie-notice"],
+                        div[class*="consent-banner"] {
+                            display: none !important;
+                            visibility: hidden !important;
+                            pointer-events: none !important;
+                        }
+                    `;
+                    document.head.appendChild(style);
+
+                    function cleanPopups() {
+                        var gp = document.getElementById('credential_picker_container') || document.querySelector('iframe[src*="accounts.google.com/gsi"]');
+                        if (gp) gp.remove();
+                    }
+                    cleanPopups();
+                    setInterval(cleanPopups, 1500);
+
                     var vids = document.querySelectorAll('video');
                     for (var i = 0; i < vids.length; i++) {
                         vids[i].setAttribute('playsinline', '');

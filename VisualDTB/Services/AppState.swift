@@ -208,11 +208,20 @@ final class AppState: ObservableObject {
     }
 
     func nextDocumentPage() {
-        if documentCurrentPage + 1 < documentTotalPages {
+        if documentTotalPages <= 1 || documentCurrentPage + 1 < documentTotalPages {
             documentCurrentPage += 1
+            if documentCurrentPage >= documentTotalPages {
+                documentTotalPages = documentCurrentPage + 1
+            }
+        } else if documentCurrentPage + 1 >= documentTotalPages && !currentDocPath.lowercased().hasSuffix(".pdf") {
+            // Para presentaciones .key y .pptx en WebView, permitir avanzar para no quedar trabados
+            documentCurrentPage += 1
+            documentTotalPages = max(documentTotalPages, documentCurrentPage + 1)
         }
         documentPageAction = .next
         documentNavTriggerId = UUID()
+        documentScrollOffsetRatio.y = min(1.0, documentScrollOffsetRatio.y + 0.12)
+        webScrollRatio = documentScrollOffsetRatio.y
     }
 
     func prevDocumentPage() {
@@ -220,6 +229,16 @@ final class AppState: ObservableObject {
             documentCurrentPage -= 1
         }
         documentPageAction = .prev
+        documentNavTriggerId = UUID()
+        documentScrollOffsetRatio.y = max(0.0, documentScrollOffsetRatio.y - 0.12)
+        webScrollRatio = documentScrollOffsetRatio.y
+    }
+
+    func resetDocumentToStart() {
+        documentCurrentPage = 0
+        documentScrollOffsetRatio = .zero
+        webScrollRatio = 0.0
+        documentPageAction = nil
         documentNavTriggerId = UUID()
     }
 

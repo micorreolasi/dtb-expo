@@ -105,6 +105,8 @@ enum WebControlCommand: Equatable {
     case reload
     case toggleFullscreen
     case syncTime(seconds: Double)
+    case dismissPopups
+    case mirrorClick(xRatio: Double, yRatio: Double, selector: String)
 }
 
 // MARK: - Canciones

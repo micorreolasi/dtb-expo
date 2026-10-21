@@ -81,7 +81,7 @@ struct DocumentsView: View {
                                     .foregroundStyle(Theme.blue)
                             }
 
-                            HStack(spacing: 14) {
+                            HStack(spacing: 12) {
                                 Button {
                                     appState.prevDocumentPage()
                                 } label: {
@@ -103,6 +103,23 @@ struct DocumentsView: View {
                                 .buttonStyle(.plain)
                                 .disabled(appState.documentCurrentPage <= 0)
 
+                                // Botón reiniciar a Pág. 1 (ideal para destrabar presentaciones .key)
+                                Button {
+                                    appState.resetDocumentToStart()
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "arrow.counterclockwise")
+                                            .font(.system(size: 13, weight: .bold))
+                                        Text("Pág. 1")
+                                            .font(.system(size: 13, weight: .bold))
+                                    }
+                                    .foregroundStyle(Theme.textSoft)
+                                    .padding(.horizontal, 14)
+                                    .frame(height: 48)
+                                    .chip(fill: Theme.border.opacity(0.6), border: Theme.border, radius: 10)
+                                }
+                                .buttonStyle(.plain)
+
                                 Button {
                                     appState.nextDocumentPage()
                                 } label: {
@@ -116,12 +133,11 @@ struct DocumentsView: View {
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 48)
                                     .background(
-                                        appState.documentCurrentPage + 1 < appState.documentTotalPages ? Theme.blue : Theme.dim,
+                                        Theme.blue,
                                         in: RoundedRectangle(cornerRadius: 10)
                                     )
                                 }
                                 .buttonStyle(.plain)
-                                .disabled(appState.documentCurrentPage + 1 >= appState.documentTotalPages)
                             }
                         }
                         .padding(16)
@@ -130,95 +146,157 @@ struct DocumentsView: View {
 
                         // 2. Tarjetas de Cruceta Direccional y Zoom
                         HStack(alignment: .top, spacing: 20) {
-                            // Cruceta Direccional (Arriba, Abajo, Izquierda, Derecha, Centrar)
+                            // Cruceta Direccional con Barra Deslizante para .key / Diapositivas
                             VStack(spacing: 12) {
                                 HStack {
                                     Label("Mover en Pantalla (TV)", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
                                         .font(.system(size: 13, weight: .bold))
                                         .foregroundStyle(Theme.textSoft)
                                     Spacer()
+                                    Text("\(Int(appState.documentScrollOffsetRatio.y * 100))%")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(Theme.blue)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .chip(fill: Theme.blue.opacity(0.12), radius: 6)
                                 }
 
-                                VStack(spacing: 8) {
-                                    // Botón Arriba
-                                    Button {
-                                        appState.scrollDocumentUp()
-                                    } label: {
-                                        VStack(spacing: 2) {
-                                            Image(systemName: "arrow.up")
-                                                .font(.system(size: 18, weight: .bold))
-                                            Text("Arriba")
-                                                .font(.system(size: 10, weight: .bold))
-                                        }
-                                        .foregroundStyle(Theme.textBright)
-                                        .frame(width: 80, height: 54)
-                                        .chip(fill: Theme.border.opacity(0.8), border: Theme.border, radius: 10)
-                                    }
-                                    .buttonStyle(.plain)
-
-                                    // Fila Central: Izquierda - Centrar - Derecha
-                                    HStack(spacing: 8) {
+                                HStack(alignment: .center, spacing: 14) {
+                                    // Cruceta D-Pad
+                                    VStack(spacing: 8) {
+                                        // Botón Arriba
                                         Button {
-                                            appState.scrollDocumentLeft()
+                                            appState.scrollDocumentUp()
                                         } label: {
                                             VStack(spacing: 2) {
-                                                Image(systemName: "arrow.left")
+                                                Image(systemName: "arrow.up")
                                                     .font(.system(size: 18, weight: .bold))
-                                                Text("Izquierda")
+                                                Text("Arriba")
                                                     .font(.system(size: 10, weight: .bold))
                                             }
                                             .foregroundStyle(Theme.textBright)
-                                            .frame(width: 80, height: 54)
+                                            .frame(width: 74, height: 50)
                                             .chip(fill: Theme.border.opacity(0.8), border: Theme.border, radius: 10)
                                         }
                                         .buttonStyle(.plain)
 
-                                        Button {
-                                            appState.centerDocumentScroll()
-                                        } label: {
-                                            VStack(spacing: 2) {
-                                                Image(systemName: "scope")
-                                                    .font(.system(size: 18, weight: .bold))
-                                                Text("Centrar")
-                                                    .font(.system(size: 10, weight: .bold))
+                                        // Fila Central: Izquierda - Centrar - Derecha
+                                        HStack(spacing: 8) {
+                                            Button {
+                                                appState.scrollDocumentLeft()
+                                            } label: {
+                                                VStack(spacing: 2) {
+                                                    Image(systemName: "arrow.left")
+                                                        .font(.system(size: 18, weight: .bold))
+                                                    Text("Izquierda")
+                                                        .font(.system(size: 10, weight: .bold))
+                                                }
+                                                .foregroundStyle(Theme.textBright)
+                                                .frame(width: 74, height: 50)
+                                                .chip(fill: Theme.border.opacity(0.8), border: Theme.border, radius: 10)
                                             }
-                                            .foregroundStyle(Theme.blue)
-                                            .frame(width: 80, height: 54)
-                                            .chip(fill: Theme.blue.opacity(0.12), border: Theme.blue.opacity(0.4), radius: 10)
-                                        }
-                                        .buttonStyle(.plain)
+                                            .buttonStyle(.plain)
 
+                                            Button {
+                                                appState.centerDocumentScroll()
+                                            } label: {
+                                                VStack(spacing: 2) {
+                                                    Image(systemName: "scope")
+                                                        .font(.system(size: 18, weight: .bold))
+                                                    Text("Centrar")
+                                                        .font(.system(size: 10, weight: .bold))
+                                                }
+                                                .foregroundStyle(Theme.blue)
+                                                .frame(width: 74, height: 50)
+                                                .chip(fill: Theme.blue.opacity(0.12), border: Theme.blue.opacity(0.4), radius: 10)
+                                            }
+                                            .buttonStyle(.plain)
+
+                                            Button {
+                                                appState.scrollDocumentRight()
+                                            } label: {
+                                                VStack(spacing: 2) {
+                                                    Image(systemName: "arrow.right")
+                                                        .font(.system(size: 18, weight: .bold))
+                                                    Text("Derecha")
+                                                        .font(.system(size: 10, weight: .bold))
+                                                }
+                                                .foregroundStyle(Theme.textBright)
+                                                .frame(width: 74, height: 50)
+                                                .chip(fill: Theme.border.opacity(0.8), border: Theme.border, radius: 10)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+
+                                        // Botón Abajo
                                         Button {
-                                            appState.scrollDocumentRight()
+                                            appState.scrollDocumentDown()
                                         } label: {
                                             VStack(spacing: 2) {
-                                                Image(systemName: "arrow.right")
+                                                Image(systemName: "arrow.down")
                                                     .font(.system(size: 18, weight: .bold))
-                                                Text("Derecha")
+                                                Text("Abajo")
                                                     .font(.system(size: 10, weight: .bold))
                                             }
                                             .foregroundStyle(Theme.textBright)
-                                            .frame(width: 80, height: 54)
+                                            .frame(width: 74, height: 50)
                                             .chip(fill: Theme.border.opacity(0.8), border: Theme.border, radius: 10)
                                         }
                                         .buttonStyle(.plain)
                                     }
 
-                                    // Botón Abajo
-                                    Button {
-                                        appState.scrollDocumentDown()
-                                    } label: {
-                                        VStack(spacing: 2) {
-                                            Image(systemName: "arrow.down")
-                                                .font(.system(size: 18, weight: .bold))
-                                            Text("Abajo")
-                                                .font(.system(size: 10, weight: .bold))
+                                    // Barra Deslizante para Diapositivas / Keynote (.key)
+                                    VStack(spacing: 8) {
+                                        Text("Deslizar")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(Theme.textSoft)
+
+                                        Button {
+                                            appState.documentScrollOffsetRatio.y = 0.0
+                                            appState.webScrollRatio = 0.0
+                                            appState.documentCurrentPage = 0
+                                            appState.documentNavTriggerId = UUID()
+                                        } label: {
+                                            Image(systemName: "arrow.up.to.line")
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundStyle(Theme.textSoft)
+                                                .frame(width: 36, height: 28)
+                                                .chip(fill: Theme.border.opacity(0.6), radius: 6)
                                         }
-                                        .foregroundStyle(Theme.textBright)
-                                        .frame(width: 80, height: 54)
-                                        .chip(fill: Theme.border.opacity(0.8), border: Theme.border, radius: 10)
+                                        .buttonStyle(.plain)
+
+                                        Slider(
+                                            value: Binding(
+                                                get: { appState.documentScrollOffsetRatio.y },
+                                                set: { val in
+                                                    appState.documentScrollOffsetRatio.y = val
+                                                    appState.webScrollRatio = val
+                                                    appState.documentNavTriggerId = UUID()
+                                                }
+                                            ),
+                                            in: 0.0...1.0
+                                        )
+                                        .tint(Theme.blue)
+                                        .frame(width: 120)
+                                        .rotationEffect(.degrees(-90))
+                                        .frame(height: 100)
+
+                                        Button {
+                                            appState.documentScrollOffsetRatio.y = 1.0
+                                            appState.webScrollRatio = 1.0
+                                            appState.documentNavTriggerId = UUID()
+                                        } label: {
+                                            Image(systemName: "arrow.down.to.line")
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundStyle(Theme.textSoft)
+                                                .frame(width: 36, height: 28)
+                                                .chip(fill: Theme.border.opacity(0.6), radius: 6)
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 4)
+                                    .chip(fill: Theme.faint.opacity(0.6), border: Theme.border.opacity(0.5), radius: 10)
                                 }
                                 .padding(.vertical, 8)
                             }
