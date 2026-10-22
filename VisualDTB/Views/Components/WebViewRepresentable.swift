@@ -47,6 +47,9 @@ struct WebViewRepresentable: UIViewRepresentable {
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "fullscreenHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "videoPlaybackSync")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "clickMirrorHandler")
+            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "dismissGoogleHandler")
+            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "skipAdHandler")
+            contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "closeAdOverlayHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "urlChangeHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "inputSyncHandler")
             contentController.add(ScriptMessageProxy(delegate: context.coordinator), name: "documentPageCountHandler")
@@ -203,6 +206,7 @@ struct WebViewRepresentable: UIViewRepresentable {
                         );
                     }
 
+                    var lastMirrorTime = 0;
                     function handleGlobalClick(e) {
                         var target = e.target;
                         if (!target) return;
@@ -219,12 +223,72 @@ struct WebViewRepresentable: UIViewRepresentable {
                             return;
                         }
 
-                        // 2. Reflejar inmediatamente la navegación de cualquier video card o enlace
+                        // 2. Si se toca cerrar "Accede con Google" o popup de credenciales
+                        var googlePrompt = target.closest ? target.closest('#credential_picker_container, [id*="credential_picker"], iframe[src*="accounts.google.com/gsi"]') : null;
+                        var isCloseBtn = (target.id === 'dismiss-button') ||
+                                         (target.getAttribute && /cerrar|close/i.test(target.getAttribute('aria-label') || '')) ||
+                                         (target.className && typeof target.className === 'string' && /close|dismiss/i.test(target.className));
+                        if (googlePrompt && isCloseBtn) {
+                            googlePrompt.remove();
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.dismissGoogleHandler) {
+                                window.webkit.messageHandlers.dismissGoogleHandler.postMessage('dismiss');
+                            }
+                            return;
+                        }
+
+                        // 3. Si se toca "Omitir anuncio" en YouTube
+                        var skipBtn = target.closest ? target.closest('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button-text, .videoAdUiSkipButton, [class*="skip-button"]') : null;
+                        if (skipBtn) {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.skipAdHandler) {
+                                window.webkit.messageHandlers.skipAdHandler.postMessage('skip');
+                            }
+                            return;
+                        }
+
+                        // 4. Si se toca cerrar banner o anuncio superpuesto
+                        var adCloseBtn = target.closest ? target.closest('.ytp-ad-overlay-close-button, .ytp-ad-overlay-close-container, button[class*="ad-overlay-close"]') : null;
+                        if (adCloseBtn) {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.closeAdOverlayHandler) {
+                                window.webkit.messageHandlers.closeAdOverlayHandler.postMessage('close');
+                            }
+                            return;
+                        }
+
+                        // 5. Reflejar inmediatamente la navegación de cualquier video card o enlace
                         var link = target.closest ? target.closest('a') : null;
                         if (link && link.href && link.href.indexOf('http') === 0 && link.href.indexOf('proxy.html') === -1) {
                             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.urlChangeHandler) {
                                 window.webkit.messageHandlers.urlChangeHandler.postMessage(link.href);
                             }
+                        }
+
+                        // 6. Reflejar toque a la TV con coordenadas proporcionales 1:1
+                        var now = Date.now();
+                        if (now - lastMirrorTime < 100) return;
+                        lastMirrorTime = now;
+
+                        var touch = e.changedTouches ? e.changedTouches[0] : e;
+                        var clientX = touch.clientX || (window.innerWidth * 0.5);
+                        var clientY = touch.clientY || (window.innerHeight * 0.5);
+                        var xR = clientX / window.innerWidth;
+                        var yR = clientY / window.innerHeight;
+                        var sel = '';
+                        if (target.id) {
+                            sel = '#' + CSS.escape(target.id);
+                        } else if (target.getAttribute && target.getAttribute('aria-label')) {
+                            sel = '[aria-label="' + CSS.escape(target.getAttribute('aria-label')) + '"]';
+                        } else if (target.className && typeof target.className === 'string') {
+                            var cls = target.className.trim().split(/\\s+/).filter(function(c) { return c && !c.includes(':'); }).slice(0, 2).join('.');
+                            if (cls) sel = target.tagName.toLowerCase() + '.' + cls;
+                        }
+                        if (!sel && target.tagName) sel = target.tagName.toLowerCase();
+
+                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.clickMirrorHandler) {
+                            window.webkit.messageHandlers.clickMirrorHandler.postMessage({
+                                xRatio: xR,
+                                yRatio: yR,
+                                selector: sel
+                            });
                         }
                     }
 
@@ -308,7 +372,7 @@ struct WebViewRepresentable: UIViewRepresentable {
                     Document.prototype.webkitRequestFullscreen = dummyFullscreen;
                 } catch(e) {}
 
-                // Ocultar avisos molestos de incompatibilidad de YouTube y popups de Google (SIN OCULTAR ANUNCIOS)
+                // Ocultar avisos molestos de incompatibilidad de YouTube (SIN OCULTAR ANUNCIOS)
                 function injectCleanStyles() {
                     if (document.getElementById('dtb-global-clean-style')) return;
                     var style = document.createElement('style');
@@ -322,9 +386,7 @@ struct WebViewRepresentable: UIViewRepresentable {
                         .toast,
                         ytm-notification-action-renderer,
                         div[class*="upsell-dialog"],
-                        yt-upsell-dialog-renderer,
-                        #credential_picker_container,
-                        iframe[src*="accounts.google.com/gsi"] {
+                        yt-upsell-dialog-renderer {
                             display: none !important;
                             visibility: hidden !important;
                             pointer-events: none !important;
@@ -834,6 +896,28 @@ struct WebViewRepresentable: UIViewRepresentable {
             """
             webView.evaluateJavaScript(js, completionHandler: nil)
 
+        case .skipAd:
+            let js = """
+            (function() {
+                var skipBtns = document.querySelectorAll('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button-text, .videoAdUiSkipButton, [class*="skip-button"], button.ytp-ad-skip-button');
+                for (var i = 0; i < skipBtns.length; i++) {
+                    try { skipBtns[i].click(); } catch(e) {}
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
+        case .closeAdOverlay:
+            let js = """
+            (function() {
+                var closeBtns = document.querySelectorAll('.ytp-ad-overlay-close-button, .ytp-ad-overlay-close-container, button[class*="ad-overlay-close"]');
+                for (var i = 0; i < closeBtns.length; i++) {
+                    try { closeBtns[i].click(); } catch(e) {}
+                }
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+
         case .mirrorClick(let xRatio, let yRatio, let selector):
             let escapedSelector = selector
                 .replacingOccurrences(of: "\\", with: "\\\\")
@@ -948,6 +1032,18 @@ struct WebViewRepresentable: UIViewRepresentable {
             if message.name == "fullscreenHandler" {
                 DispatchQueue.main.async {
                     self.parent.appState.sendWebCommand(.toggleFullscreen)
+                }
+            } else if message.name == "dismissGoogleHandler" {
+                DispatchQueue.main.async {
+                    self.parent.appState.sendExternalWebCommand(.dismissPopups)
+                }
+            } else if message.name == "skipAdHandler" {
+                DispatchQueue.main.async {
+                    self.parent.appState.sendExternalWebCommand(.skipAd)
+                }
+            } else if message.name == "closeAdOverlayHandler" {
+                DispatchQueue.main.async {
+                    self.parent.appState.sendExternalWebCommand(.closeAdOverlay)
                 }
             } else if message.name == "urlChangeHandler", let newUrl = message.body as? String, !newUrl.isEmpty {
                 guard WebViewRepresentable.isValidTopLevelWebUrl(newUrl) else { return }

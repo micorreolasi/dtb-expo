@@ -47,6 +47,12 @@ final class ExternalDisplayManager: ObservableObject {
             name: UIScreen.didDisconnectNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleScreenNotification(_:)),
+            name: UIScreen.modeDidChangeNotification,
+            object: nil
+        )
     }
 
     private func checkScreensAndScenes() {
@@ -58,16 +64,29 @@ final class ExternalDisplayManager: ObservableObject {
         if let appState = currentAppState {
             appState.hasExternalDisplay = hasExternalScreen
             if let target = externalScreen {
-                let pixelSize = target.currentMode?.size ?? target.bounds.size
-                let width = max(320, pixelSize.width)
-                let height = max(240, pixelSize.height)
+                let boundsSize: CGSize = {
+                    if let externalScene {
+                        return externalScene.coordinateSpace.bounds.size
+                    } else {
+                        return target.bounds.size
+                    }
+                }()
+                let width = max(320, boundsSize.width)
+                let height = max(240, boundsSize.height)
+                let scale = target.scale
+                let pixelSize = target.currentMode?.size ?? CGSize(width: width * scale, height: height * scale)
                 let ratio = width / height
+
                 appState.externalDisplayResolution = CGSize(width: width, height: height)
                 appState.externalDisplayAspectRatio = ratio
-                appState.externalDisplayName = "\(Int(width))×\(Int(height))"
+                appState.externalDisplayScale = scale
+                appState.externalDisplayPixelSize = pixelSize
+                appState.externalDisplayName = "\(Int(width))×\(Int(height)) pt (\(Int(pixelSize.width))×\(Int(pixelSize.height)) px)"
             } else {
                 appState.externalDisplayResolution = CGSize(width: 1920, height: 1080)
                 appState.externalDisplayAspectRatio = 16.0 / 9.0
+                appState.externalDisplayScale = 1.0
+                appState.externalDisplayPixelSize = CGSize(width: 1920, height: 1080)
                 appState.externalDisplayName = "1920×1080 (16:9)"
             }
         }
@@ -143,12 +162,23 @@ final class ExternalDisplayManager: ObservableObject {
             window.screen = targetScreen
         }
 
-        let pixelSize = targetScreen.currentMode?.size ?? targetScreen.bounds.size
-        let width = max(320, pixelSize.width)
-        let height = max(240, pixelSize.height)
+        let boundsSize: CGSize = {
+            if let externalScene {
+                return externalScene.coordinateSpace.bounds.size
+            } else {
+                return targetScreen.bounds.size
+            }
+        }()
+        let width = max(320, boundsSize.width)
+        let height = max(240, boundsSize.height)
+        let scale = targetScreen.scale
+        let pixelSize = targetScreen.currentMode?.size ?? CGSize(width: width * scale, height: height * scale)
+
         appState.externalDisplayResolution = CGSize(width: width, height: height)
         appState.externalDisplayAspectRatio = width / height
-        appState.externalDisplayName = "\(Int(width))×\(Int(height))"
+        appState.externalDisplayScale = scale
+        appState.externalDisplayPixelSize = pixelSize
+        appState.externalDisplayName = "\(Int(width))×\(Int(height)) pt (\(Int(pixelSize.width))×\(Int(pixelSize.height)) px)"
 
         let rootView = ExternalProjectionContainerView()
             .environmentObject(appState)

@@ -288,8 +288,10 @@ final class AppState: ObservableObject {
     @Published var externalDisplayEnabled: Bool = true
     @Published var hasExternalDisplay: Bool = false
     @Published var externalDisplayResolution: CGSize = CGSize(width: 1920, height: 1080)
+    @Published var externalDisplayPixelSize: CGSize = CGSize(width: 1920, height: 1080)
+    @Published var externalDisplayScale: CGFloat = 1.0
     @Published var externalDisplayAspectRatio: CGFloat = 16.0 / 9.0
-    @Published var externalDisplayName: String = "1920x1080 (16:9)"
+    @Published var externalDisplayName: String = "1920×1080 (16:9)"
 
     // MARK: - Alertas
     @Published var currentAlert: AppAlert? = nil
