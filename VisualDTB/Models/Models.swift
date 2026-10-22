@@ -103,6 +103,7 @@ enum WebControlCommand: Equatable {
     case forward(seconds: Double)
     case toggleMute
     case reload
+    case goBack
     case toggleFullscreen
     case syncTime(seconds: Double)
     case dismissPopups

@@ -8,6 +8,23 @@ struct WebViewModule: View {
             VStack(spacing: 0) {
                 // Barra superior de navegación interactiva
                 HStack(spacing: 8) {
+                    // Botón Regresar a la página anterior
+                    Button {
+                        appState.sendWebCommand(.goBack)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.backward")
+                                .font(.system(size: 13, weight: .bold))
+                            Text("Atrás")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.textBright)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .chip(fill: Theme.border.opacity(0.8), border: Theme.border, radius: 6)
+                    }
+                    .buttonStyle(.plain)
+
                     Image(systemName: "globe")
                         .font(.system(size: 16))
                         .foregroundStyle(Theme.green)
@@ -152,6 +169,23 @@ struct WebViewModule: View {
                                 .font(.system(size: 11, weight: .bold))
                         }
                         .foregroundStyle(Theme.textSoft)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .chip(fill: Theme.border, radius: 6)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Regresar a la página anterior
+                    Button {
+                        appState.sendWebCommand(.goBack)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.uturn.backward")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Regresar")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.textBright)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .chip(fill: Theme.border, radius: 6)

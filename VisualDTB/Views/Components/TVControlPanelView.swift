@@ -580,6 +580,25 @@ struct TVControlPanelView: View {
                 .chip(fill: Theme.sky.opacity(0.12), border: Theme.sky.opacity(0.35), radius: 6)
             }
             .buttonStyle(.plain)
+
+            // Botón Regresar a la página anterior (en modo web)
+            if appState.projection.type == .web {
+                Button {
+                    appState.sendWebCommand(.goBack)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "chevron.backward")
+                            .font(.system(size: layout.isCompact ? 9 : 11, weight: .bold))
+                        Text("Página Anterior")
+                            .font(.system(size: layout.isCompact ? 8 : 10, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.textBright)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, layout.isCompact ? 5 : 7)
+                    .chip(fill: Theme.border, radius: 6)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(layout.isCompact ? 8 : 10)
         .chip(fill: Theme.panel, border: Theme.border, radius: 8)

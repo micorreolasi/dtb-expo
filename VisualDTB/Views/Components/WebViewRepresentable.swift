@@ -729,6 +729,13 @@ struct WebViewRepresentable: UIViewRepresentable {
         case .reload:
             webView.reload()
 
+        case .goBack:
+            if webView.canGoBack {
+                webView.goBack()
+            } else {
+                webView.evaluateJavaScript("window.history.back();", completionHandler: nil)
+            }
+
         case .toggleFullscreen:
             let js = """
             (function() {
