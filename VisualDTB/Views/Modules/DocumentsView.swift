@@ -432,7 +432,7 @@ struct DocumentsView: View {
         defer { appState.isReadingDocument = false }
         do {
             guard let selectedURL = try result.get().first else { return }
-            let cachedURL = try MediaStorage.importDocument(from: selectedURL)
+            let cachedURL = try MediaStorage.importDocument(from: selectedURL, replacing: appState.currentDocPath)
             let fileName = selectedURL.lastPathComponent
             appState.currentDocName = fileName
             appState.currentDocPath = cachedURL.path

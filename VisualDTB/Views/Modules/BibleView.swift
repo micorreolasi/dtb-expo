@@ -7,6 +7,11 @@ struct BibleView: View {
 
     @State private var expandedBook: String? = "Mateo"
     @State private var showFileImporter = false
+    @State private var showSearchSheet = false
+    /// Versículo resaltado (1-based) en el capítulo actual.
+    @State private var highlightedVerse: Int? = nil
+    /// Cambia cada vez que se pide desplazar las listas hasta el libro/versículo seleccionado.
+    @State private var scrollRequest = UUID()
 
     private var activeBible: LoadedBible? {
         appState.loadedBibles.first(where: { $0.id == appState.activeBibleId }) ?? appState.loadedBibles.first
@@ -57,6 +62,11 @@ struct BibleView: View {
         ) { result in
             handleImportBibleJSON(result)
         }
+        .sheet(isPresented: $showSearchSheet) {
+            BibleSearchSheet(bibles: appState.loadedBibles) { result in
+                selectSearchResult(result)
+            }
+        }
         .onAppear {
             if expandedBook == nil || (activeBookData == nil) {
                 if let mateo = activeBible?.books.first(where: { $0.name.localizedCaseInsensitiveContains("Mateo") }) {
@@ -73,6 +83,25 @@ struct BibleView: View {
     // MARK: - Columna Izquierda: Buscador, Biblias y Libros
     private var leftColumnView: some View {
         VStack(spacing: 0) {
+            // Botón Buscar palabras en las Biblias
+            Button {
+                showSearchSheet = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 13, weight: .bold))
+                    Text("Buscar")
+                        .font(.system(size: 13, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, layout.isCompact ? 7 : 9)
+                .background(Theme.blue, in: RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.top, 10)
+
             // Pills de Biblias cargadas + botón Añadir JSON
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -80,6 +109,7 @@ struct BibleView: View {
                         let isSelected = b.id == appState.activeBibleId
                         Button {
                             appState.activeBibleId = b.id
+                            highlightedVerse = nil
                             if let first = b.books.first {
                                 appState.selectedBook = first.name
                                 appState.selectedChapter = 1
@@ -127,6 +157,7 @@ struct BibleView: View {
             .bottomBorder(Theme.border)
 
             // Lista de Libros desplegables
+            ScrollViewReader { bookProxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(filteredBooks, id: \.name) { b in
@@ -134,6 +165,7 @@ struct BibleView: View {
 
                         VStack(spacing: 0) {
                             Button {
+                                highlightedVerse = nil
                                 if isExpanded {
                                     expandedBook = nil
                                 } else {
@@ -169,6 +201,7 @@ struct BibleView: View {
                                     ForEach(1...b.chapters.count, id: \.self) { ch in
                                         let isCurrentCh = appState.selectedBook == b.name && appState.selectedChapter == ch
                                         Button {
+                                            highlightedVerse = nil
                                             appState.selectedBook = b.name
                                             appState.selectedChapter = ch
                                         } label: {
@@ -185,8 +218,18 @@ struct BibleView: View {
                                 .background(Theme.bgDeep)
                             }
                         }
+                        .id(b.name)
                     }
                 }
+            }
+            .onChange(of: scrollRequest) { _ in
+                guard let target = expandedBook else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        bookProxy.scrollTo(target, anchor: .top)
+                    }
+                }
+            }
             }
         }
     }
@@ -205,10 +248,12 @@ struct BibleView: View {
                 .padding(.vertical, 12)
                 .bottomBorder()
 
+                ScrollViewReader { verseProxy in
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(Array(activeChapterVerses.enumerated()), id: \.offset) { index, verseText in
                             let verseNum = index + 1
+                            let isHighlighted = highlightedVerse == verseNum
                             let fullRef = "\(book.name) \(appState.selectedChapter):\(verseNum)"
                             let fullContent = "\(fullRef)\n\(verseText)"
 
@@ -243,9 +288,16 @@ struct BibleView: View {
                                 .buttonStyle(.plain)
                             }
                             .padding(12)
-                            .chip(fill: Theme.panel, radius: 8)
+                            .chip(
+                                fill: isHighlighted ? Theme.blue.opacity(0.18) : Theme.panel,
+                                border: isHighlighted ? Theme.blue : nil,
+                                radius: 8,
+                                lineWidth: 2
+                            )
                             .contentShape(Rectangle())
+                            .id(verseNum)
                             .onTapGesture {
+                                highlightedVerse = verseNum
                                 appState.addRecentVerse(RecentVerse(ref: fullRef, text: verseText, fullContent: fullContent))
                                 let items = activeChapterVerses.enumerated().map { i, v in
                                     "\(book.name) \(appState.selectedChapter):\(i + 1)\n\(v)"
@@ -257,6 +309,15 @@ struct BibleView: View {
                     }
                     .padding(12)
                 }
+                .onChange(of: scrollRequest) { _ in
+                    guard let target = highlightedVerse else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            verseProxy.scrollTo(target, anchor: .center)
+                        }
+                    }
+                }
+                }
             } else {
                 EmptyStateView(
                     icon: "book",
@@ -265,6 +326,32 @@ struct BibleView: View {
                 )
             }
         }
+    }
+
+    /// Resultado elegido en el buscador: proyecta el versículo y selecciona libro, capítulo y versículo.
+    private func selectSearchResult(_ r: BibleSearchResult) {
+        guard let bible = appState.loadedBibles.first(where: { $0.id == r.bibleId }),
+              let book = bible.books.first(where: { $0.name == r.book }),
+              book.chapters.indices.contains(r.chapter - 1) else { return }
+        let verses = book.chapters[r.chapter - 1]
+        guard verses.indices.contains(r.verse - 1) else { return }
+
+        // Selección en la Biblia
+        appState.bibleSearch = ""
+        appState.activeBibleId = bible.id
+        appState.selectedBook = book.name
+        appState.selectedChapter = r.chapter
+        expandedBook = book.name
+        highlightedVerse = r.verse
+
+        // Proyección (con playlist del capítulo completo)
+        let items = verses.enumerated().map { i, v in "\(book.name) \(r.chapter):\(i + 1)\n\(v)" }
+        let index = r.verse - 1
+        appState.addRecentVerse(RecentVerse(ref: r.reference, text: verses[index], fullContent: items[index]))
+        appState.playlist = Playlist(items: items, currentIndex: index)
+        appState.projection = .text(items[index])
+
+        scrollRequest = UUID()
     }
 
     private func handleImportBibleJSON(_ result: Result<[URL], Error>) {

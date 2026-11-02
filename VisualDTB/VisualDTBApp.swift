@@ -5,6 +5,13 @@ struct VisualDTBApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var externalDisplay = ExternalDisplayManager.shared
 
+    init() {
+        // Limpieza de privacidad/espacio: documentos temporales y medios huérfanos (una vez por arranque)
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3) {
+            MediaStorage.performStartupCleanup()
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             GeometryReader { proxy in

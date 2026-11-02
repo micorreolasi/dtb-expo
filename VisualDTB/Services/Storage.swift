@@ -4,14 +4,57 @@ import UniformTypeIdentifiers
 import AVFoundation
 import UIKit
 
+// MARK: - Ubicación privada de datos de la app
+
+/// Carpeta privada de la app (Application Support/VisualDTB). No es visible en la app Archivos
+/// ni en Finder. La primera vez migra automáticamente los datos que estaban en Documents.
+enum AppStorageLocation {
+    static let root: URL = {
+        let fm = FileManager.default
+        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("VisualDTB", isDirectory: true)
+        try? fm.createDirectory(at: base, withIntermediateDirectories: true)
+        migrateLegacyDocuments(to: base)
+        return base
+    }()
+
+    /// Mueve los JSON internos y la carpeta Media desde Documents (versiones anteriores) sin perder datos.
+    private static func migrateLegacyDocuments(to base: URL) {
+        let fm = FileManager.default
+        let legacy = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let jsonFiles = ["dtb_service_orders_v1.json", "dtb_custom_backgrounds_v1.json", "dtb_active_background_v1.json"]
+        for name in jsonFiles {
+            let src = legacy.appendingPathComponent(name)
+            let dst = base.appendingPathComponent(name)
+            if fm.fileExists(atPath: src.path) && !fm.fileExists(atPath: dst.path) {
+                try? fm.moveItem(at: src, to: dst)
+            }
+        }
+        let legacyMedia = legacy.appendingPathComponent("Media", isDirectory: true)
+        let newMedia = base.appendingPathComponent("Media", isDirectory: true)
+        guard fm.fileExists(atPath: legacyMedia.path) else { return }
+        try? fm.createDirectory(at: newMedia, withIntermediateDirectories: true)
+        if let items = try? fm.contentsOfDirectory(at: legacyMedia, includingPropertiesForKeys: nil) {
+            for item in items {
+                let dst = newMedia.appendingPathComponent(item.lastPathComponent)
+                if !fm.fileExists(atPath: dst.path) {
+                    try? fm.moveItem(at: item, to: dst)
+                }
+            }
+        }
+        if let rest = try? fm.contentsOfDirectory(atPath: legacyMedia.path), rest.isEmpty {
+            try? fm.removeItem(at: legacyMedia)
+        }
+    }
+}
+
 // MARK: - Persistencia de Órdenes de Culto (equivalente a serviceStorage.ts)
 
 enum ServiceStorage {
     private static let queue = DispatchQueue(label: "visualdtb.service-storage")
 
     static var fileURL: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("dtb_service_orders_v1.json")
+        AppStorageLocation.root.appendingPathComponent("dtb_service_orders_v1.json")
     }
 
     static func load() -> [ServiceOrder] {
@@ -45,13 +88,11 @@ enum BackgroundStorage {
     private static let queue = DispatchQueue(label: "visualdtb.background-storage")
 
     static var fileURL: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("dtb_custom_backgrounds_v1.json")
+        AppStorageLocation.root.appendingPathComponent("dtb_custom_backgrounds_v1.json")
     }
 
     static var activeFileURL: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("dtb_active_background_v1.json")
+        AppStorageLocation.root.appendingPathComponent("dtb_active_background_v1.json")
     }
 
     /// Resuelve una ruta absoluta o relativa a la ubicación actual del sandbox de la app
@@ -190,24 +231,86 @@ enum BibleLoader {
 
 enum MediaStorage {
     static var mediaDirectory: URL {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Media", isDirectory: true)
+        let dir = AppStorageLocation.root.appendingPathComponent("Media", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
 
+    /// Carpeta temporal para documentos importados (PDF, PPTX, Word...)
+    static var tempDocumentsDirectory: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("Documents", isDirectory: true)
+    }
+
     /// Copia un documento elegido con el selector a la caché (equivale a `copyToCacheDirectory: true`).
-    static func importDocument(from url: URL) throws -> URL {
+    /// Borra la copia del documento anterior para no acumular archivos.
+    static func importDocument(from url: URL, replacing previousPath: String? = nil) throws -> URL {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
 
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Documents", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        if let previousPath, !previousPath.isEmpty {
+            let previousDir = URL(fileURLWithPath: previousPath).deletingLastPathComponent()
+            if isInside(previousDir, tempDocumentsDirectory) {
+                try? FileManager.default.removeItem(at: previousDir)
+            }
+        }
+
+        let dir = tempDocumentsDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let destination = dir.appendingPathComponent(url.lastPathComponent)
         try FileManager.default.copyItem(at: url, to: destination)
         return destination
+    }
+
+    // MARK: Borrado seguro y limpieza
+
+    /// true si `child` está realmente dentro de `parent` (rutas normalizadas, sin trucos con ".." o enlaces).
+    static func isInside(_ child: URL, _ parent: URL) -> Bool {
+        let c = child.standardizedFileURL.resolvingSymlinksInPath().path
+        let p = parent.standardizedFileURL.resolvingSymlinksInPath().path
+        let prefix = p.hasSuffix("/") ? p : p + "/"
+        return c.hasPrefix(prefix) && c != p
+    }
+
+    /// Borra un archivo de medios solo si pertenece a la carpeta Media de la app.
+    /// Nunca toca fondos incluidos de fábrica, URLs remotas ni archivos fuera del contenedor.
+    static func deleteMediaFileIfOwned(_ uri: String) {
+        guard !uri.isEmpty, !uri.hasPrefix("http://"), !uri.hasPrefix("https://") else { return }
+        let resolved = BackgroundStorage.resolveURI(uri)
+        let url = URL(fileURLWithPath: resolved)
+        guard isInside(url, mediaDirectory) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Limpieza al iniciar la app:
+    /// - Vacía los documentos temporales importados en sesiones anteriores.
+    /// - Borra medios huérfanos (vistas previas no guardadas) que no aparecen en ningún dato guardado.
+    static func performStartupCleanup() {
+        let fm = FileManager.default
+        try? fm.removeItem(at: tempDocumentsDirectory)
+
+        // Conjunto de texto de todos los JSON guardados (fondos, fondo activo, órdenes de culto)
+        var referencedText = ""
+        for json in [BackgroundStorage.fileURL, BackgroundStorage.activeFileURL, ServiceStorage.fileURL] {
+            if let data = try? Data(contentsOf: json), let text = String(data: data, encoding: .utf8) {
+                referencedText += text
+            }
+        }
+
+        let minAge: TimeInterval = 60 * 60 // solo archivos con más de 1 hora
+        guard let items = try? fm.contentsOfDirectory(
+            at: mediaDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for item in items {
+            let name = item.lastPathComponent
+            if referencedText.contains(name) { continue }
+            let modified = (try? item.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
+            if Date().timeIntervalSince(modified) > minAge {
+                try? fm.removeItem(at: item)
+            }
+        }
     }
 
     static func readData(from url: URL) throws -> Data {

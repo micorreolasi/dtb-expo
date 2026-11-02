@@ -16,17 +16,42 @@ struct WebViewRepresentable: UIViewRepresentable {
     var navAction: DocumentNavAction? = nil
     var navTriggerId: UUID? = nil
 
+    /// Valida que una URL sea apta como página principal (iPad y TV).
+    /// Se parsea con URLComponents: solo http/https con host real; se rechazan
+    /// javascript:, data:, file:, blob:, frames auxiliares y dominios publicitarios.
     static func isValidTopLevelWebUrl(_ urlString: String) -> Bool {
-        guard urlString.hasPrefix("http://") || urlString.hasPrefix("https://") else { return false }
-        let lower = urlString.lowercased()
-        if lower.contains("proxy.html") ||
-           lower.contains("/static/proxy") ||
-           lower.contains("about:blank") ||
-           lower.contains("accounts.google.com/gsi") ||
-           lower.contains("doubleclick.net") {
-            return false
-        }
+        guard urlString.count <= 4096,
+              let comps = URLComponents(string: urlString),
+              let scheme = comps.scheme?.lowercased(),
+              scheme == "https" || scheme == "http",
+              let host = comps.host?.lowercased(), !host.isEmpty else { return false }
+
+        let blockedHosts = ["doubleclick.net", "googlesyndication.com", "googleadservices.com"]
+        if blockedHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }) { return false }
+
+        let path = comps.path.lowercased()
+        if path.hasSuffix("proxy.html") || path.contains("/static/proxy") { return false }
+        if host == "accounts.google.com" && path.hasPrefix("/gsi") { return false }
         return true
+    }
+
+    /// Hosts de reproductores de video confiables cuyos iframes pueden enviar
+    /// mensajes limitados (omitir anuncio, play/pause, pantalla completa).
+    static func isTrustedVideoHost(_ host: String) -> Bool {
+        let h = host.lowercased()
+        let trusted = ["youtube.com", "youtube-nocookie.com", "vimeo.com"]
+        return trusted.contains(where: { h == $0 || h.hasSuffix("." + $0) })
+    }
+
+    /// Convierte un texto Swift en un literal de cadena JavaScript seguro (con comillas incluidas).
+    static func jsStringLiteral(_ value: String) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              var json = String(data: data, encoding: .utf8) else { return "\"\"" }
+        json = json
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+            .replacingOccurrences(of: "</", with: "<\\/")
+        return json
     }
 
     func makeCoordinator() -> Coordinator {
@@ -40,7 +65,8 @@ struct WebViewRepresentable: UIViewRepresentable {
         config.allowsInlineMediaPlayback = true
         config.allowsPictureInPictureMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
-        config.preferences.javaScriptCanOpenWindowsAutomatically = true
+        // Seguridad: los anuncios no pueden abrir ventanas sin un toque real del usuario
+        config.preferences.javaScriptCanOpenWindowsAutomatically = false
 
         let contentController = WKUserContentController()
         if mode != .external {
@@ -571,20 +597,16 @@ struct WebViewRepresentable: UIViewRepresentable {
             }
 
         case .syncInput(let selector, let value):
-            let escapedValue = value
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "'", with: "\\'")
-                .replacingOccurrences(of: "\n", with: "\\n")
-                .replacingOccurrences(of: "\r", with: "")
-            let escapedSelector = selector
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "'", with: "\\'")
+            let selLit = WebViewRepresentable.jsStringLiteral(selector)
+            let valLit = WebViewRepresentable.jsStringLiteral(value.replacingOccurrences(of: "\r", with: ""))
             let js = """
             (function() {
+                var sel = \(selLit);
+                var val = \(valLit);
                 var el = null;
                 try {
-                    if ('\(escapedSelector)' !== '') {
-                        el = document.querySelector('\(escapedSelector)');
+                    if (sel !== '') {
+                        el = document.querySelector(sel);
                     }
                 } catch(e) {}
                 if (!el) {
@@ -592,9 +614,9 @@ struct WebViewRepresentable: UIViewRepresentable {
                 }
                 if (el) {
                     if ('value' in el) {
-                        el.value = '\(escapedValue)';
+                        el.value = val;
                     } else {
-                        el.innerText = '\(escapedValue)';
+                        el.innerText = val;
                     }
                     try {
                         el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -606,14 +628,13 @@ struct WebViewRepresentable: UIViewRepresentable {
             webView.evaluateJavaScript(js, completionHandler: nil)
 
         case .submitInput(let selector):
-            let escapedSelector = selector
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "'", with: "\\'")
+            let selLit = WebViewRepresentable.jsStringLiteral(selector)
             let js = """
             (function() {
+                var sel = \(selLit);
                 var el = null;
                 try {
-                    if ('\(escapedSelector)' !== '') el = document.querySelector('\(escapedSelector)');
+                    if (sel !== '') el = document.querySelector(sel);
                 } catch(e) {}
                 if (!el) {
                     el = document.querySelector('input[name="search_query"], input#search, input[type="search"], input[type="text"]');
@@ -918,12 +939,14 @@ struct WebViewRepresentable: UIViewRepresentable {
             """
             webView.evaluateJavaScript(js, completionHandler: nil)
 
-        case .mirrorClick(let xRatio, let yRatio, let selector):
-            let escapedSelector = selector
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "'", with: "\\'")
+        case .mirrorClick(let rawX, let rawY, let selector):
+            // Coordenadas siempre dentro de la pantalla (0...1) y números finitos
+            let xRatio = rawX.isFinite ? max(0, min(1, rawX)) : 0.5
+            let yRatio = rawY.isFinite ? max(0, min(1, rawY)) : 0.5
+            let selLit = WebViewRepresentable.jsStringLiteral(selector)
             let js = """
             (function() {
+                var sel = \(selLit);
                 // 1. Eliminar popup de Google si estuviera visible
                 var gp = document.getElementById('credential_picker_container') || document.querySelector('iframe[src*="accounts.google.com/gsi"]');
                 if (gp) {
@@ -932,9 +955,9 @@ struct WebViewRepresentable: UIViewRepresentable {
                 }
 
                 // 2. Click por selector directo si existe
-                if ('\(escapedSelector)' && '\(escapedSelector)' !== '') {
+                if (sel && sel !== '') {
                     try {
-                        var elSel = document.querySelector('\(escapedSelector)');
+                        var elSel = document.querySelector(sel);
                         if (elSel) {
                             elSel.click();
                             var pBtn = elSel.closest('button, a, [role="button"], video, .play, .vp-play-button');
@@ -1024,11 +1047,56 @@ struct WebViewRepresentable: UIViewRepresentable {
         var lastExternalActionId: UUID? = nil
         var lastSyncReceivedTime: Date = .distantPast
 
+        // Control de ráfagas de navegación (evita redirecciones en cadena hacia la TV)
+        private var lastNavigationTime: Date = .distantPast
+        private var pendingNavigation: DispatchWorkItem? = nil
+        private static let navigationMinInterval: TimeInterval = 0.3
+
+        // Límites de tamaño para datos recibidos desde la página web
+        private static let maxSelectorLength = 200
+        private static let maxInputLength = 2000
+
+        /// Mensajes que pueden venir del iframe de un reproductor confiable (YouTube / Vimeo incrustado)
+        private static let iframeAllowedMessages: Set<String> = [
+            "fullscreenHandler", "skipAdHandler", "closeAdOverlayHandler", "videoPlaybackSync"
+        ]
+
         init(_ parent: WebViewRepresentable) {
             self.parent = parent
         }
 
+        /// Seguridad: solo se aceptan mensajes del frame principal. Los iframes (anuncios, widgets)
+        /// se ignoran, excepto acciones limitadas desde reproductores de video confiables.
+        private func isMessageAllowed(_ message: WKScriptMessage) -> Bool {
+            if message.frameInfo.isMainFrame { return true }
+            guard Coordinator.iframeAllowedMessages.contains(message.name) else { return false }
+            return WebViewRepresentable.isTrustedVideoHost(message.frameInfo.securityOrigin.host)
+        }
+
+        /// Aplica una navegación en iPad + TV, agrupando cambios muy rápidos (se aplica el último).
+        private func applyNavigation(_ newUrl: String) {
+            pendingNavigation?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                self.lastNavigationTime = Date()
+                if self.parent.appState.webUrl != newUrl {
+                    self.parent.appState.webUrl = newUrl
+                }
+                if self.parent.appState.projection.content != newUrl {
+                    self.parent.appState.projection = ProjectionData(type: .web, content: newUrl)
+                }
+                self.parent.onNavigation?(newUrl)
+                self.parent.appState.sendExternalWebCommand(.navigate(url: newUrl))
+            }
+            pendingNavigation = work
+            let elapsed = Date().timeIntervalSince(lastNavigationTime)
+            let delay = max(0, Coordinator.navigationMinInterval - elapsed)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        }
+
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard isMessageAllowed(message) else { return }
+
             if message.name == "fullscreenHandler" {
                 DispatchQueue.main.async {
                     self.parent.appState.sendWebCommand(.toggleFullscreen)
@@ -1048,18 +1116,11 @@ struct WebViewRepresentable: UIViewRepresentable {
             } else if message.name == "urlChangeHandler", let newUrl = message.body as? String, !newUrl.isEmpty {
                 guard WebViewRepresentable.isValidTopLevelWebUrl(newUrl) else { return }
                 DispatchQueue.main.async {
-                    if self.parent.appState.webUrl != newUrl {
-                        self.parent.appState.webUrl = newUrl
-                    }
-                    if self.parent.appState.projection.content != newUrl {
-                        self.parent.appState.projection = ProjectionData(type: .web, content: newUrl)
-                    }
-                    self.parent.onNavigation?(newUrl)
-                    self.parent.appState.sendExternalWebCommand(.navigate(url: newUrl))
+                    self.applyNavigation(newUrl)
                 }
             } else if message.name == "inputSyncHandler", let dict = message.body as? [String: Any] {
-                let sel = dict["selector"] as? String ?? ""
-                let val = dict["value"] as? String ?? ""
+                let sel = String((dict["selector"] as? String ?? "").prefix(Coordinator.maxSelectorLength))
+                let val = String((dict["value"] as? String ?? "").prefix(Coordinator.maxInputLength))
                 let isEnter = dict["isEnter"] as? Bool ?? false
                 DispatchQueue.main.async {
                     self.parent.appState.sendExternalWebCommand(.syncInput(selector: sel, value: val))
@@ -1067,21 +1128,25 @@ struct WebViewRepresentable: UIViewRepresentable {
                         self.parent.appState.sendExternalWebCommand(.submitInput(selector: sel))
                     }
                 }
-            } else if message.name == "documentPageCountHandler", let count = message.body as? Int, count > 1 {
+            } else if message.name == "documentPageCountHandler", let count = message.body as? Int, count > 1, count <= 2000 {
                 DispatchQueue.main.async {
                     if self.parent.appState.documentTotalPages != count {
                         self.parent.appState.documentTotalPages = count
                     }
                 }
             } else if message.name == "clickMirrorHandler", let dict = message.body as? [String: Any] {
-                let xRatio = dict["xRatio"] as? Double ?? 0.5
-                let yRatio = dict["yRatio"] as? Double ?? 0.5
-                let sel = dict["selector"] as? String ?? ""
+                let rawX = dict["xRatio"] as? Double ?? 0.5
+                let rawY = dict["yRatio"] as? Double ?? 0.5
+                guard rawX.isFinite, rawY.isFinite else { return }
+                let xRatio = max(0, min(1, rawX))
+                let yRatio = max(0, min(1, rawY))
+                let sel = String((dict["selector"] as? String ?? "").prefix(Coordinator.maxSelectorLength))
                 DispatchQueue.main.async {
                     self.parent.appState.sendExternalWebCommand(.mirrorClick(xRatio: xRatio, yRatio: yRatio, selector: sel))
                 }
             } else if message.name == "videoPlaybackSync", let dict = message.body as? [String: Any], let action = dict["action"] as? String {
-                let time = dict["time"] as? Double ?? 0.0
+                let rawTime = dict["time"] as? Double ?? 0.0
+                let time = (rawTime.isFinite && rawTime >= 0) ? rawTime : 0.0
                 DispatchQueue.main.async {
                     if action == "play" {
                         self.parent.appState.sendExternalWebCommand(.play)
@@ -1116,8 +1181,10 @@ struct WebViewRepresentable: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             // Manejar links que abren en nueva pestaña (target="_blank")
+            // Seguridad: solo si el usuario realmente tocó un enlace; pop-ups automáticos se cancelan.
             if navigationAction.targetFrame == nil {
-                if let url = navigationAction.request.url?.absoluteString,
+                if navigationAction.navigationType == .linkActivated,
+                   let url = navigationAction.request.url?.absoluteString,
                    WebViewRepresentable.isValidTopLevelWebUrl(url),
                    let u = navigationAction.request.url {
                     webView.load(URLRequest(url: u))
@@ -1266,7 +1333,11 @@ struct WebViewRepresentable: UIViewRepresentable {
 
         // Manejar links que abren en nueva ventana o target="_blank" (muy común en YouTube)
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-            if navigationAction.targetFrame == nil {
+            // Seguridad: solo abrir ventanas nuevas originadas por un toque real y con URL válida
+            if navigationAction.targetFrame == nil,
+               navigationAction.navigationType == .linkActivated,
+               let url = navigationAction.request.url?.absoluteString,
+               WebViewRepresentable.isValidTopLevelWebUrl(url) {
                 webView.load(navigationAction.request)
             }
             return nil

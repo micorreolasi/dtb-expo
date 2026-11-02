@@ -69,7 +69,7 @@ Esta es la migración 100% nativa en **Swift y SwiftUI** del proyecto `visualdtb
 - Controles de Diapositiva (flechas arriba/abajo si hay playlist activa).
 - Control deslizante de **Brillo** (10% a 100%).
 - Paleta de colores de letra (Blanco, Negro, Amarillo, Celeste, Verde, Naranja, Rosa).
-- Interruptor de **Fondo de Letra** (caja negra detrás del texto).
+- Interruptor de **Fondo de Letra** (franja negra detrás de cada línea de texto).
 
 ---
 

@@ -4,3 +4,5 @@ name: VisualDtb
 author: Luis Angel Salinas Islas
 iconPath: VisualDTB/Resources/Assets/icon.png
 infoPath: VisualDTB/Resources/Info.plist
+resources:
+  - VisualDTB/Resources/PrivacyInfo.xcprivacy

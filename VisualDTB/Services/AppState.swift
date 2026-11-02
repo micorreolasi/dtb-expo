@@ -129,6 +129,18 @@ final class AppState: ObservableObject {
         if mediaPreviewUri == bg.uri {
             mediaPreviewUri = nil
         }
+
+        // Privacidad: borrar del disco la foto/video y su miniatura si ya nada los usa
+        let stillUsed: (String) -> Bool = { path in
+            self.customBackgrounds.contains(where: { $0.uri == path || $0.thumbnail == path }) ||
+            self.projection.content == path
+        }
+        if !stillUsed(bg.uri) {
+            MediaStorage.deleteMediaFileIfOwned(bg.uri)
+        }
+        if bg.thumbnail != bg.uri, !stillUsed(bg.thumbnail) {
+            MediaStorage.deleteMediaFileIfOwned(bg.thumbnail)
+        }
     }
 
     func selectBackground(_ bg: MediaBackground) {
