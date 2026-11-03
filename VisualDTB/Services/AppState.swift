@@ -76,7 +76,7 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Canciones
-    @Published var songsList: [Song] = DefaultData.songs
+    @Published var songsList: [Song] = []
     @Published var selectedSongId: String = ""
     @Published var songSearch: String = ""
     @Published var isAddingSong: Bool = false
@@ -315,23 +315,40 @@ final class AppState: ObservableObject {
 
         // Cargar Biblia por defecto desde el bundle o JSON
         let bundled = BibleLoader.loadBundled()
-        let initialBooks = bundled.isEmpty ? [] : bundled
-        self.loadedBibles = [
-            LoadedBible(id: "rv1960", name: "RV1960", books: initialBooks)
-        ]
-        if let mateo = initialBooks.first(where: { $0.name.localizedCaseInsensitiveContains("Mateo") }) {
-            self.selectedBook = mateo.name
+        if bundled.isEmpty {
+            self.loadedBibles = []
+            self.activeBibleId = ""
+            self.selectedBook = ""
             self.selectedChapter = 1
-        } else if let firstBook = initialBooks.first {
-            self.selectedBook = firstBook.name
-            self.selectedChapter = 1
+        } else {
+            self.loadedBibles = [
+                LoadedBible(id: "rv1960", name: "RV1960", books: bundled)
+            ]
+            if let mateo = bundled.first(where: { $0.name.localizedCaseInsensitiveContains("Mateo") }) {
+                self.selectedBook = mateo.name
+                self.selectedChapter = 1
+            } else if let firstBook = bundled.first {
+                self.selectedBook = firstBook.name
+                self.selectedChapter = 1
+            }
         }
+
+        // Cargar Canciones desde el bundle + canciones personalizadas guardadas
+        let bundledSongs = SongLoader.loadBundled()
+        let customSongs = SongStorage.loadCustom()
+        self.songsList = customSongs + bundledSongs
 
         // Cargar servicios guardados
         let saved = ServiceStorage.load()
         if !saved.isEmpty {
             self.services = saved
             self.activeServiceId = saved[0].id
+        }
+        if bundled.isEmpty && bundledSongs.isEmpty {
+            // En la versión sin datos pre-cargados, no precargar cantos/versículos de ejemplo en el culto inicial
+            if self.services.count == 1 && self.services[0].id == "srv-default-1" {
+                self.services[0].items.removeAll { $0.type == .song || $0.type == .verse }
+            }
         }
 
         // Cargar preferencia de tema (Modo Claro / Modo Oscuro)
@@ -516,6 +533,7 @@ final class AppState: ObservableObject {
 
         let newSong = Song(id: "custom-\(Int(Date().timeIntervalSince1970 * 1000))", title: title, stanzas: stanzas)
         songsList.insert(newSong, at: 0)
+        SongStorage.saveCustom(songsList)
         isAddingSong = false
         newSongTitle = ""
         newSongLyrics = ""
@@ -527,6 +545,7 @@ final class AppState: ObservableObject {
         newSongTitle = song.title
         newSongLyrics = song.stanzas.map { $0.text }.joined(separator: "\n\n")
         songsList.removeAll(where: { $0.id == id })
+        SongStorage.saveCustom(songsList)
         isAddingSong = true
     }
 
@@ -538,6 +557,7 @@ final class AppState: ObservableObject {
             onConfirm: { [weak self] in
                 guard let self else { return }
                 self.songsList.removeAll(where: { $0.id == id })
+                SongStorage.saveCustom(self.songsList)
                 if self.selectedSongId == id, let first = self.songsList.first {
                     self.selectedSongId = first.id
                 }

@@ -227,6 +227,62 @@ enum BibleLoader {
     }
 }
 
+// MARK: - Canciones incluidas en el bundle y persistencia de personalizadas
+
+enum SongLoader {
+    static func loadBundled() -> [Song] {
+        let candidateURLs: [URL?] = [
+            Bundle.module.url(forResource: "songs", withExtension: "json"),
+            Bundle.main.url(forResource: "songs", withExtension: "json"),
+            Bundle.main.url(forResource: "songs", withExtension: "json", subdirectory: "VisualDTB_VisualDTB.bundle"),
+            Bundle.main.bundleURL.appendingPathComponent("VisualDTB_VisualDTB.bundle/songs.json"),
+            Bundle.main.resourceURL?.appendingPathComponent("VisualDTB_VisualDTB.bundle/songs.json"),
+            Bundle.main.resourceURL?.appendingPathComponent("songs.json")
+        ]
+
+        for case let url? in candidateURLs {
+            if FileManager.default.fileExists(atPath: url.path),
+               let data = try? Data(contentsOf: url),
+               let songs = try? JSONDecoder().decode([Song].self, from: data),
+               !songs.isEmpty {
+                print("Canciones cargadas correctamente desde \(url.path), total: \(songs.count)")
+                return songs
+            }
+        }
+        print("No se encontró songs.json en el bundle (versión sin datos pre-cargados)")
+        return []
+    }
+}
+
+enum SongStorage {
+    private static let queue = DispatchQueue(label: "visualdtb.song-storage")
+
+    static var fileURL: URL {
+        AppStorageLocation.root.appendingPathComponent("dtb_custom_songs_v1.json")
+    }
+
+    static func loadCustom() -> [Song] {
+        guard FileManager.default.fileExists(atPath: fileURL.path),
+              let data = try? Data(contentsOf: fileURL),
+              let parsed = try? JSONDecoder().decode([Song].self, from: data) else {
+            return []
+        }
+        return parsed
+    }
+
+    static func saveCustom(_ songs: [Song]) {
+        let customOnly = songs.filter { $0.id.hasPrefix("custom") }
+        queue.async {
+            do {
+                let data = try JSONEncoder().encode(customOnly)
+                try data.write(to: fileURL, options: .atomic)
+            } catch {
+                print("saveCustomSongs error:", error)
+            }
+        }
+    }
+}
+
 // MARK: - Archivos de medios y documentos
 
 enum MediaStorage {

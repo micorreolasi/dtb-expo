@@ -4,6 +4,10 @@ struct SongsView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.layoutInfo) var layout
 
+    @State private var showSearchSheet = false
+    @State private var highlightedStanzaIndex: Int? = nil
+    @State private var scrollRequest = UUID()
+
     private var activeSong: Song? {
         appState.songsList.first(where: { $0.id == appState.selectedSongId })
     }
@@ -32,11 +36,37 @@ struct SongsView: View {
             }
         }
         .background(Theme.bg)
+        .sheet(isPresented: $showSearchSheet) {
+            SongSearchSheet(songs: appState.songsList) { result in
+                selectSearchResult(result)
+            }
+        }
     }
 
     // MARK: - Columna Izquierda: Lista de Canciones
     private var leftColumnView: some View {
         VStack(spacing: 0) {
+            // Botón Buscar palabras en las Canciones
+            Button {
+                showSearchSheet = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 13, weight: .bold))
+                    Text("Buscar")
+                        .font(.system(size: 13, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, layout.isCompact ? 7 : 9)
+                .background(Theme.blue, in: RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+            .background(Theme.panel)
+
             // Buscador + Botón "+ Nueva"
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
@@ -62,6 +92,7 @@ struct SongsView: View {
             .bottomBorder(Theme.border)
 
             // Lista de canciones
+            ScrollViewReader { songProxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(filteredSongs) { song in
@@ -70,6 +101,7 @@ struct SongsView: View {
                         VStack(spacing: 0) {
                             HStack {
                                 Button {
+                                    highlightedStanzaIndex = nil
                                     if isExpanded {
                                         appState.selectedSongId = ""
                                     } else {
@@ -145,6 +177,7 @@ struct SongsView: View {
                                         let isCurrentStanza = appState.playlist?.currentItem == stanza.text
 
                                         Button {
+                                            highlightedStanzaIndex = stIdx
                                             let items = song.stanzas.map { $0.text }
                                             appState.playlist = Playlist(items: items, currentIndex: stIdx)
                                             appState.projection = .text(items[stIdx])
@@ -172,8 +205,19 @@ struct SongsView: View {
                             }
                         }
                         .bottomBorder(Theme.panel)
+                        .id(song.id)
                     }
                 }
+            }
+            .onChange(of: scrollRequest) { _ in
+                let target = appState.selectedSongId
+                guard !target.isEmpty else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        songProxy.scrollTo(target, anchor: .top)
+                    }
+                }
+            }
             }
         }
     }
@@ -211,10 +255,11 @@ struct SongsView: View {
                     .padding(.vertical, 12)
                     .bottomBorder()
 
+                    ScrollViewReader { stanzaProxy in
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             ForEach(Array(song.stanzas.enumerated()), id: \.offset) { index, stanza in
-                                let isCurrentStanza = appState.playlist?.currentItem == stanza.text
+                                let isCurrentStanza = appState.playlist?.currentItem == stanza.text || highlightedStanzaIndex == index
 
                                 HStack(alignment: .top, spacing: 14) {
                                     Text(stanza.name)
@@ -230,13 +275,15 @@ struct SongsView: View {
                                 }
                                 .padding(14)
                                 .chip(
-                                    fill: Theme.panel,
+                                    fill: isCurrentStanza ? Theme.blue.opacity(0.18) : Theme.panel,
                                     border: isCurrentStanza ? Theme.blue : nil,
                                     radius: 8,
                                     lineWidth: 2
                                 )
                                 .contentShape(Rectangle())
+                                .id(index)
                                 .onTapGesture {
+                                    highlightedStanzaIndex = index
                                     let items = song.stanzas.map { $0.text }
                                     appState.playlist = Playlist(items: items, currentIndex: index)
                                     appState.projection = .text(items[index])
@@ -244,6 +291,15 @@ struct SongsView: View {
                             }
                         }
                         .padding(14)
+                    }
+                    .onChange(of: scrollRequest) { _ in
+                        guard let target = highlightedStanzaIndex else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                stanzaProxy.scrollTo(target, anchor: .center)
+                            }
+                        }
+                    }
                     }
                 }
             } else {
@@ -290,5 +346,21 @@ struct SongsView: View {
             }
             .padding(16)
         }
+    }
+
+    private func selectSearchResult(_ r: SongSearchResult) {
+        guard let song = appState.songsList.first(where: { $0.id == r.songId }),
+              song.stanzas.indices.contains(r.stanzaIndex) else { return }
+
+        appState.songSearch = ""
+        appState.isAddingSong = false
+        appState.selectedSongId = song.id
+        highlightedStanzaIndex = r.stanzaIndex
+
+        let items = song.stanzas.map { $0.text }
+        appState.playlist = Playlist(items: items, currentIndex: r.stanzaIndex)
+        appState.projection = .text(items[r.stanzaIndex])
+
+        scrollRequest = UUID()
     }
 }

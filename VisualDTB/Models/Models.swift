@@ -122,7 +122,7 @@ struct Stanza: Codable, Hashable {
     var text: String
 }
 
-struct Song: Identifiable, Hashable {
+struct Song: Codable, Identifiable, Hashable {
     var id: String
     var title: String
     var stanzas: [Stanza]
