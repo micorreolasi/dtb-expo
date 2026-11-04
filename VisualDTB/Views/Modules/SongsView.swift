@@ -8,13 +8,27 @@ struct SongsView: View {
     @State private var highlightedStanzaIndex: Int? = nil
     @State private var scrollRequest = UUID()
 
+    enum SongSortOrder: String {
+        case asc = "A-Z"
+        case desc = "Z-A"
+    }
+    @State private var sortOrder: SongSortOrder = .asc
+
     private var activeSong: Song? {
         appState.songsList.first(where: { $0.id == appState.selectedSongId })
     }
 
     private var filteredSongs: [Song] {
-        if appState.songSearch.isEmpty { return appState.songsList }
-        return appState.songsList.filter { $0.title.localizedCaseInsensitiveContains(appState.songSearch) }
+        let base: [Song]
+        if appState.songSearch.isEmpty {
+            base = appState.songsList
+        } else {
+            base = appState.songsList.filter { $0.title.localizedCaseInsensitiveContains(appState.songSearch) }
+        }
+        return base.sorted { a, b in
+            let cmp = a.title.localizedStandardCompare(b.title)
+            return sortOrder == .asc ? cmp == .orderedAscending : cmp == .orderedDescending
+        }
     }
 
     var body: some View {
@@ -67,12 +81,31 @@ struct SongsView: View {
             .padding(.bottom, 6)
             .background(Theme.panel)
 
-            // Buscador + Botón "+ Nueva"
+            // Buscador + Orden A-Z + Botón "+ Nueva"
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.muted)
                 DarkTextField(placeholder: "Buscar canción...", text: $appState.songSearch)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        sortOrder = (sortOrder == .asc) ? .desc : .asc
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: sortOrder == .asc ? "arrow.up" : "arrow.down")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(sortOrder.rawValue)
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.sky)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 6)
+                    .chip(fill: Theme.sky.opacity(0.15), border: Theme.sky.opacity(0.35), radius: 6)
+                }
+                .buttonStyle(.plain)
+
                 Button {
                     appState.newSongTitle = ""
                     appState.newSongLyrics = ""
